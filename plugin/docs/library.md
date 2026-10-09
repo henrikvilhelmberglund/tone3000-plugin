@@ -472,7 +472,11 @@ so reopening the editor or the project shows it where you left it.
   overwriting as everywhere.
 - The active preset follows its file: renaming or moving it, or a folder
   above it, keeps it active under its new path (`relinkActivePreset`);
-  deleting it leaves the chain as it is with no active preset.
+  deleting it leaves the chain as it is with no active preset. Blocks follow
+  theirs the same way (`relinkLocalFiles`): a block playing a capture from a
+  folder renamed or moved in the drawer (your library renamed included)
+  names it where it went, its folder picture too, and an undo bringing a
+  removed block back finds the file there.
 
 ## Sharing: `.t3klibrary`
 

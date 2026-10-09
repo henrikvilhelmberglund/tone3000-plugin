@@ -988,4 +988,70 @@ TEST(LibraryProcessorTest, ActivePresetFollowsRenamesMovesAndRemoves) {
   EXPECT_TRUE(activeId(proc).isEmpty());
 }
 
+// A block plays its file in place: a Library rename or move of the folder
+// takes the block along (it names the file where it went), and a load of the
+// old path (an undo bringing a removed block back) finds the file there too.
+TEST(LibraryProcessorTest, BlocksFollowTheirFilesThroughRenamesAndMoves) {
+  LibraryProcessor lp;
+  auto& proc = lp.proc;
+  const juce::File amps = proc.libraryCreateFolder(lp.t.library.capturesDir(), "Amps");
+  const juce::File capture = amps.getChildFile("Gain 1.nam");
+  ASSERT_TRUE(testFile("a2-amp-test.nam").copyFileTo(capture));
+  const juce::var res = proc.loadLocalTonePath(capture);
+  ASSERT_TRUE(res["error"].isVoid());
+  ASSERT_TRUE(waitForChainLoaded(proc));
+  const auto blockId = res["blockId"].toString().toStdString();
+  const auto playing = [&proc]() -> juce::var {
+    const juce::var state = proc.getChainState(-1);  // held: the lane points into it
+    if (const auto* lane = state["chain"].getArray())
+      for (const auto& item : *lane)
+        if (item["kind"].toString() == "tone") return item["tone"]["models"][0];
+    return {};
+  };
+  const auto oldUrl = juce::URL(capture).toString(false);
+  // Wearing a folder picture from the same folder (as from a library's
+  // .t3kpictures): it moves along.
+  const juce::File picture = amps.getChildFile("cover.png");
+  ASSERT_TRUE(picture.replaceWithText("png"));
+  auto* art = new juce::DynamicObject();
+  art->setProperty("image", juce::URL(picture).toString(false));
+  ASSERT_TRUE(proc.setLocalToneArt(blockId, juce::var(art)));
+  const auto image = [&proc]() -> juce::String {
+    const juce::var state = proc.getChainState(-1);
+    if (const auto* lane = state["chain"].getArray())
+      for (const auto& item : *lane)
+        if (item["kind"].toString() == "tone") return item["tone"]["images"][0].toString();
+    return {};
+  };
+
+  const juce::File renamed = proc.libraryRename(amps, "Amps 2");
+  EXPECT_EQ(juce::URL(image()).getLocalFile(), renamed.getChildFile("cover.png"));
+  ASSERT_TRUE(renamed.isDirectory());
+  const juce::File there = renamed.getChildFile("Gain 1.nam");
+  EXPECT_EQ(playing()["source_path"].toString(), there.getFullPathName());
+  EXPECT_EQ(juce::URL(playing()["model_url"].toString()).getLocalFile(), there);
+  EXPECT_EQ(TONE3000Processor::resolveLocalModelFile(lp.t.base, oldUrl), there);
+
+  // Moved again (into another folder): followed through both.
+  const juce::File archive = proc.libraryCreateFolder(lp.t.library.capturesDir(), "Archive");
+  const juce::File moved = proc.libraryMove(renamed, archive);
+  const juce::File now = moved.getChildFile("Gain 1.nam");
+  ASSERT_TRUE(now.existsAsFile());
+  EXPECT_EQ(playing()["source_path"].toString(), now.getFullPathName());
+  EXPECT_EQ(TONE3000Processor::resolveLocalModelFile(lp.t.base, oldUrl), now);
+
+  // A removed block brought back by undo after another rename still loads.
+  ASSERT_TRUE(proc.removeChainBlock(blockId));
+  const juce::File last = proc.libraryRename(moved, "Amps 3");
+  ASSERT_TRUE(last.isDirectory());
+  ASSERT_TRUE(proc.undoChain());
+  EXPECT_TRUE(waitForChainLoaded(proc));
+  EXPECT_EQ(TONE3000Processor::resolveLocalModelFile(lp.t.base, oldUrl), last.getChildFile("Gain 1.nam"));
+
+  // A file that never moved, and one whose folder only shares a name prefix,
+  // are left alone.
+  const juce::File other = lp.t.base.getChildFile("Amps 22").getChildFile("x.nam");
+  EXPECT_EQ(TONE3000Processor::resolveLocalModelFile(lp.t.base, juce::URL(other).toString(false)), other);
+}
+
 }  // namespace

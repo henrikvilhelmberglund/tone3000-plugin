@@ -574,6 +574,60 @@ bool TONE3000Processor::refreshToneMetadata(const juce::String& toneJsonString) 
   return changed;
 }
 
+void TONE3000Processor::relinkLocalFiles(const juce::File& from, const juce::File& to) {
+  if (from == juce::File() || to == juce::File() || from == to)
+    return;
+  noteLocalFilesMoved(from, to);
+  // Where `file` is now: invalid when the move didn't touch it.
+  const auto movedTo = [&](const juce::File& file) {
+    if (file == from)
+      return to;
+    return file.isAChildOf(from) ? to.getChildFile(file.getRelativePathFrom(from)) : juce::File();
+  };
+  bool changed = false;
+  {
+    juce::ScopedLock lock(chainMutex);
+    for (auto& l : lanes)
+      for (auto& b : l) {
+        if (b == nullptr || b->type == ChainBlockType::INSERT || !static_cast<bool>(b->toneVar["local"]))
+          continue;
+        juce::var tone = b->toneVar.clone();
+        bool touched = false;
+        // Its picture too, when it lives under the path (a folder picture in
+        // a renamed library's .t3kpictures).
+        if (auto* images = tone["images"].getArray())
+          for (auto& image : *images)
+            if (const juce::URL url(image.toString()); url.isLocalFile())
+              if (const auto now = movedTo(url.getLocalFile()); now != juce::File()) {
+                image = juce::URL(now).toString(false);
+                touched = true;
+              }
+        if (auto* models = tone["models"].getArray())
+          for (auto& model : *models) {
+            auto* obj = model.getDynamicObject();
+            if (obj == nullptr)
+              continue;
+            if (const juce::URL url(obj->getProperty("model_url").toString()); url.isLocalFile())
+              if (const auto now = movedTo(url.getLocalFile()); now != juce::File()) {
+                obj->setProperty("model_url", juce::URL(now).toString(false));
+                touched = true;
+              }
+            if (const auto source = obj->getProperty("source_path").toString(); juce::File::isAbsolutePath(source))
+              if (const auto now = movedTo(juce::File(source)); now != juce::File()) {
+                obj->setProperty("source_path", now.getFullPathName());
+                touched = true;
+              }
+          }
+        if (!touched)
+          continue;
+        setToneOnBlock(*b, b->toneId, juce::JSON::toString(tone), tone);
+        changed = true;
+      }
+  }
+  if (changed)
+    bumpChainRevision();
+}
+
 bool TONE3000Processor::setLocalToneArt(const std::string& blockId, const juce::var& art) {
   const juce::String image = art.getProperty("image", "").toString();
   const juce::String title = art.getProperty("block_title", "").toString();

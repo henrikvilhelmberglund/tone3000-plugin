@@ -220,6 +220,7 @@ juce::File TONE3000Processor::libraryRename(const juce::File& item, const juce::
     library.setLocation(library.rootDir(), renamed.getFileName(), library.linkedDirs());
   }
   relinkActivePreset(active, item, renamed);
+  relinkLocalFiles(item, renamed);
   libraryTouched({item, renamed});
   return renamed;
 }
@@ -239,6 +240,7 @@ juce::File TONE3000Processor::libraryMove(const juce::File& item, const juce::Fi
   if (moved == juce::File() || moved == item)
     return moved;
   relinkActivePreset(active, item, moved);
+  relinkLocalFiles(item, moved);
   libraryTouched({item, moved});
   return moved;
 }
@@ -336,6 +338,7 @@ void TONE3000Processor::libraryMoveAsync(const juce::File& item, const juce::Fil
                   const juce::File moved = result.toString().isEmpty() ? juce::File() : juce::File(result.toString());
                   if (moved != juce::File() && moved != item) {
                     relinkActivePreset(active, item, moved);
+                    relinkLocalFiles(item, moved);
                     libraryTouched({item, moved});
                   }
                   if (done) done(moved);
