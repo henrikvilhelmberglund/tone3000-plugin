@@ -53,6 +53,10 @@ class BlockCard : public juce::Component,
                   private UiPrefs::Listener,
                   private LibraryStore::KeepListener {
 public:
+  // A number (its model) or "a" (A/B) typed anywhere in the plugin with
+  // this card open and nothing else taking it (PluginRoot passes it on).
+  // True when it was one of those.
+  bool blockKey(const juce::KeyPress& key);
   // chainLayout.tsx: 16px-radius card, 45px chrome header, 275px padded
   // body (the last 2px hide under the border, so 273 show).
   static constexpr int kWidth = 800;
@@ -138,6 +142,13 @@ private:
   void fetchModels();
   void toggleFavorite();
   void switchModel(const juce::String& id);
+  // Once the card is clicked, the keyboard: a number picks that model (the
+  // picker's number entry), Left / Right step, "a" goes back to the model
+  // played before and again forth (A/B).
+  bool keyPressed(const juce::KeyPress& key) override;
+  void mouseDown(const juce::MouseEvent&) override;
+  void abSwitch();
+  std::string keyboardFor_;  // the block the card last took the keyboard for (on opening)
   void share();
 
   void setDropArmed(bool armed);

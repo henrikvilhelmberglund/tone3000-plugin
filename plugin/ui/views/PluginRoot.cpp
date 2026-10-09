@@ -1,5 +1,6 @@
 #include "PluginRoot.h"
 
+#include "block/BlockCard.h"
 #include "library/LibraryDrawer.h"
 
 #include "core/Design.h"
@@ -295,6 +296,7 @@ bool PluginRoot::FocusPolicy::keyPressed(const juce::KeyPress& key, juce::Compon
   // it when the OS activates it) is nothing focused as far as the UI goes.
   auto* focused = juce::Component::getCurrentlyFocusedComponent();
   if (focused != nullptr && root_.isParentOf(focused)) return false;
+  if (root_.blockKey(key)) return true;  // nothing focused: the open card's numbers, A/B
   if (key.isKeyCode(juce::KeyPress::tabKey)) {
     // The Settings takeover is its own Tab cycle while it is up: its content
     // is out of the root's order, and the chrome under it must stay out of
@@ -335,12 +337,44 @@ void PluginRoot::FocusPolicy::mouseDown(const juce::MouseEvent& e) {
   // field, a row inside its popover).
   auto* focused = juce::Component::getCurrentlyFocusedComponent();
   auto* pressed = e.eventComponent;
-  if (focused == nullptr || pressed == nullptr || !root_.isParentOf(focused)) return;
-  if (focused == pressed || focused->isParentOf(pressed) || pressed->isParentOf(focused)) return;
-  focused->giveAwayKeyboardFocus();
+  if (focused != nullptr && pressed != nullptr && root_.isParentOf(focused) && focused != pressed &&
+      !focused->isParentOf(pressed) && !pressed->isParentOf(focused)) {
+    focused->giveAwayKeyboardFocus();
+    focused = nullptr;
+  }
+  // A click that took the keyboard nowhere (empty space, the faceplate) with
+  // a block's card open: the card takes it, so its numbers and A/B work
+  // after any click. A host gives the plugin's window the keyboard only when
+  // something in it asks. Not a click in the Library drawer (its own keys).
+  if (pressed == nullptr || (focused != nullptr && root_.isParentOf(focused))) return;
+  if (pressed->findParentComponentOfClass<LibraryDrawer>() != nullptr || dynamic_cast<LibraryDrawer*>(pressed) != nullptr)
+    return;
+  if (!root_.isParentOf(pressed) && pressed != &root_) return;
+  if (auto* card = root_.openCard()) card->grabKeyboardFocus();
+}
+
+BlockCard* PluginRoot::openCard() {
+  if (settingsInFront() != nullptr || updateNotice_ != nullptr || connectionModal_ != nullptr) return nullptr;
+  // The card on screen (one at a time).
+  std::function<BlockCard*(juce::Component&)> find = [&find](juce::Component& c) -> BlockCard* {
+    if (auto* card = dynamic_cast<BlockCard*>(&c); card != nullptr && card->isShowing()) return card;
+    for (auto* child : c.getChildren())
+      if (child->isVisible())
+        if (auto* card = find(*child)) return card;
+    return nullptr;
+  };
+  return find(*this);
+}
+
+bool PluginRoot::blockKey(const juce::KeyPress& key) {
+  auto* card = openCard();
+  return card != nullptr && card->blockKey(key);
 }
 
 bool PluginRoot::keyPressed(const juce::KeyPress& key) {
+  // Bubbled up from whatever was focused, unused: the open card's, if it is
+  // one of its keys.
+  if (blockKey(key)) return true;
   if (key != juce::KeyPress::escapeKey) return false;
   auto* focused = getCurrentlyFocusedComponent();
   if (focused == nullptr || !isParentOf(focused)) return false;

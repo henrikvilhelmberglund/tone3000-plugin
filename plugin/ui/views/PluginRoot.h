@@ -54,6 +54,8 @@
 
 namespace t3k::ui {
 
+class BlockCard;
+
 class PluginRoot : public juce::Component,
                    public OverlayHost,
                    // Library rows drag onto gallery tiles (LibraryDrawer, GalleryTile).
@@ -110,6 +112,12 @@ public:
   void parentHierarchyChanged() override;
   // Escape drops a focused control's focus (a text field takes its own Escape).
   bool keyPressed(const juce::KeyPress& key) override;
+  // A number or "a" typed with a block's card open, that nothing focused
+  // took (a click on the EQ, the faceplate, nowhere): the card's (its model,
+  // A/B). The Library drawer and text fields keep theirs.
+  bool blockKey(const juce::KeyPress& key);
+  // The block card on screen, if one is open.
+  BlockCard* openCard();
   std::unique_ptr<juce::ComponentTraverser> createKeyboardFocusTraverser() override;
 
 private:

@@ -30,6 +30,7 @@
 #include "views/ChainScreen.h"
 #include "views/block/BlockCard.h"
 #include "views/library/LibraryDrawer.h"
+#include "widgets/ModelSelect.h"
 #include "views/HintBar.h"
 #include "views/ToastView.h"
 #include "LibraryState.h"
@@ -1256,6 +1257,14 @@ struct LibraryFeatureTests : juce::UnitTest {
       pump(200);
       const auto* before = pluginRoot.services().chain.previous(blockId);
       expect(before != nullptr && before->activeModelId == 1, "remembers the model it left");
+      auto* card = dynamic_cast<BlockCard*>(
+          drive::find(pluginRoot, [](juce::Component& c) { return dynamic_cast<BlockCard*>(&c) != nullptr; }));
+      expect(card != nullptr, "the block's card");
+      if (card != nullptr) {
+        static_cast<juce::Component*>(card)->keyPressed(juce::KeyPress('a', 0, 'a'));
+        pump(100);
+        expect(backend.lastSwitch().first == blockId && backend.lastSwitch().second == 1, "a: back to model 1");
+      }
       // On model 1 now: "a" typed in the Library drawer goes forth to 2.
       if (auto* lane = both["chain"].getArray())
         for (auto& item : *lane)
@@ -1271,6 +1280,11 @@ struct LibraryFeatureTests : juce::UnitTest {
         pump(100);
         expect(backend.lastSwitch().first == blockId && backend.lastSwitch().second == 2, "a in the drawer: forth to 2");
       }
+      // Typed with the focus anywhere else in the plugin (the EQ, nowhere):
+      // the open card's still.
+      if (auto* focused = juce::Component::getCurrentlyFocusedComponent()) focused->giveAwayKeyboardFocus();
+      expect(pluginRoot.keyPressed(juce::KeyPress('2', 0, '2')), "a number from anywhere");
+      expectEquals(pluginRoot.services().toast.message(), juce::String("2 / 2"), "the card's model picker took it");
       chain.getDynamicObject()->setProperty("revision", 702);
       backend.setChain(chain);  // back to Plexi alone
       pump(200);
@@ -1418,6 +1432,18 @@ struct LibraryFeatureTests : juce::UnitTest {
       backend.setChain(chain);
       pump(200);
       prefs.remove(ToneArt::kCachePref);
+
+      // Back on Plexi: "a" plays the Vox folder's capture again, in this block
+      // (A/B across folders).
+      if (auto* card = dynamic_cast<BlockCard*>(
+              drive::find(pluginRoot, [](juce::Component& c) { return dynamic_cast<BlockCard*>(&c) != nullptr; }))) {
+        static_cast<juce::Component*>(card)->keyPressed(juce::KeyPress('a', 0, 'a'));
+        pump(300);
+        expectEquals(backend.lastLocalLoadFile().getFullPathName(), voxCapture.getFullPathName(), "a: the other folder's capture");
+        expectEquals(juce::String(backend.lastLocalLoadTarget()), juce::String(blockId), "into the same block");
+      } else {
+        expect(false, "the block's card");
+      }
     }
 
     beginTest("a number typed jumps to that capture in the folder and loads it");
@@ -1809,6 +1835,48 @@ struct LibraryStateTests : juce::UnitTest {
     }
   }
 };
+
+// A block's model picker takes numbers once clicked: digits close together
+// make one, picked at once when no more could follow; Left / Right step.
+struct ModelSelectNumberTests : juce::UnitTest {
+  ModelSelectNumberTests() : juce::UnitTest("Model picker numbers", "ui") {}
+  void runTest() override {
+    ModelSelect select;
+    std::vector<ModelSelect::Option> options;
+    for (int i = 1; i <= 30; ++i) options.push_back({juce::String(100 + i), "Model " + juce::String(i)});
+    select.setOptions(options);
+    select.setValue("101");
+    juce::String picked;
+    select.onChange = [&](const juce::String& id) {
+      picked = id;
+      select.setValue(id);
+    };
+    const auto type = [&](char digit) { select.keyPressed(juce::KeyPress(digit, 0, static_cast<juce::juce_wchar>(digit))); };
+    const auto pump = [](int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); };
+
+    beginTest("2, 5: the 25th, at once (no 250th)");
+    type('2');
+    expect(picked.isEmpty(), "2 may become 25: waits");
+    type('5');
+    expectEquals(picked, juce::String("125"));
+
+    beginTest("then 7: a new number, the 7th");
+    type('7');
+    expectEquals(picked, juce::String("107"));
+
+    beginTest("3 alone: after the pause");
+    type('3');
+    pump(1000);
+    expectEquals(picked, juce::String("103"));
+
+    beginTest("Right / Left step");
+    select.keyPressed(juce::KeyPress(juce::KeyPress::rightKey));
+    expectEquals(picked, juce::String("104"));
+    select.keyPressed(juce::KeyPress(juce::KeyPress::leftKey));
+    expectEquals(picked, juce::String("103"));
+  }
+};
+ModelSelectNumberTests modelSelectNumberTests;
 
 // Every Library hint fits the hint bar on one line (it is cut off, not
 // wrapped), with a Library item's icon before it.

@@ -225,6 +225,11 @@ void BlockCard::buildBody() {
   body_.addAndMakeVisible(meta_);
 
   select_.onChange = [this](const juce::String& id) { switchModel(id); };
+  select_.onTyped = [this](int position, int count) {
+    services_.toast.show(juce::String(position) + " / " + juce::String(count), Toast::Style::quiet);
+  };
+  setWantsKeyboardFocus(true);  // given by a click (mouseDown): numbers, A/B
+  addMouseListener(this, true);
   // Opening retries a failed list fetch, so a transient failure never sticks.
   select_.onOpen = [this] {
     if (!modelsLoading_ && models_.empty()) fetchModels();
@@ -247,6 +252,16 @@ void BlockCard::buildBody() {
 
 // Sync from native
 void BlockCard::setBlock(const ChainItem& block, bool namDownstream) {
+  // Opened on a block (a tile clicked): the keyboard comes here (numbers,
+  // A/B), unless something is being typed into (the Library's search).
+  if (block.blockId != keyboardFor_) {
+    keyboardFor_ = block.blockId;
+    juce::MessageManager::callAsync([safe = juce::Component::SafePointer<BlockCard>(this)] {
+      if (safe == nullptr || !safe->isShowing()) return;
+      if (dynamic_cast<juce::TextInputTarget*>(juce::Component::getCurrentlyFocusedComponent()) != nullptr) return;
+      safe->grabKeyboardFocus();
+    });
+  }
   const int previousToneId = block_.tone.id;
   const bool previousLocal = block_.tone.local;
   const int keptBefore = keptToneId_;
@@ -945,6 +960,58 @@ void BlockCard::toggleFavorite() {
         else
           services_.session.getTone(toneId, finish);
       }));
+}
+
+void BlockCard::mouseDown(const juce::MouseEvent&) {
+  // A click anywhere on the card gives it the keyboard (numbers, A/B), unless
+  // what was clicked took it for itself (a text field, the model picker:
+  // they run first, and a key they don't use still comes up to the card).
+  if (auto* focused = getCurrentlyFocusedComponent(); focused != nullptr && isParentOf(focused)) return;
+  grabKeyboardFocus();
+}
+
+bool BlockCard::blockKey(const juce::KeyPress& key) {
+  if (key.getModifiers().isCommandDown() || key.getModifiers().isAltDown() || key.getModifiers().isCtrlDown())
+    return false;
+  const auto c = key.getTextCharacter();
+  if (c == 'a' || c == 'A') {
+    abSwitch();
+    return true;
+  }
+  if (c >= '0' && c <= '9') return select_.keyPressed(key);  // what the picker does with them
+  return false;
+}
+
+bool BlockCard::keyPressed(const juce::KeyPress& key) {
+  if (blockKey(key)) return true;
+  // Left / Right step, once the card itself has the keyboard (elsewhere they
+  // scroll the screen).
+  if (key.isKeyCode(juce::KeyPress::leftKey) || key.isKeyCode(juce::KeyPress::rightKey)) return select_.keyPressed(key);
+  return false;
+}
+
+void BlockCard::abSwitch() {
+  const auto* before = services_.chain.previous(block_.blockId);
+  if (before == nullptr) return;
+  // Another model of the tone it plays: switched as the picker does.
+  if (block_.tone.local && before->tone.local) {
+    juce::String file;
+    for (const auto& m : before->tone.models)
+      if (m.id == before->activeModelId) file = m.sourcePath;
+    for (const auto& m : block_.tone.models)
+      if (file.isNotEmpty() && m.sourcePath == file) {
+        if (m.id != block_.activeModelId) switchModel(juce::String(m.id));
+        return;
+      }
+  } else if (!block_.tone.local && !before->tone.local && before->tone.id == block_.tone.id) {
+    for (const auto& m : models_)
+      if (m.id == before->activeModelId) {
+        switchModel(juce::String(m.id));
+        return;
+      }
+  }
+  // Another folder's capture, another tone: loaded into this block again.
+  services_.library.abSwitch(block_.blockId);
 }
 
 void BlockCard::switchModel(const juce::String& idText) {
