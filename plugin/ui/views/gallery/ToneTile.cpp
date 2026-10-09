@@ -71,7 +71,9 @@ void ToneTile::setBlock(const ChainItem& block) {
 // (the previous model keeps playing, so `loaded` stays true) and `!loaded`
 // covers fresh blocks that have nothing to play yet.
 void ToneTile::syncState() {
-  const bool busy = block_.modelLoading || (!block_.loaded && !block_.loadFailed);
+  // After a short grace (BusyGrace): a quick switch leaves the tile as it is.
+  const bool busy = busyGrace_.shown(block_.modelLoading || (!block_.loaded && !block_.loadFailed),
+                                     [this] { syncState(); });
   const bool armed = dropArmed();
   image_.setVisible(!armed);
   imageFade_.animateTo(enabled_ && !busy && !block_.loadFailed ? 1.0f : kDimmedImage, kImageFadeMs);

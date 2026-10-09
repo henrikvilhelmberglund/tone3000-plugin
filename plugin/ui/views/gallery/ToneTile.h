@@ -8,6 +8,7 @@
 
 #include "GalleryTile.h"
 #include "core/AlphaTween.h"
+#include "core/BusyGrace.h"
 #include "model/ChainState.h"
 #include "widgets/BlockLed.h"
 #include "widgets/ChromeIconButton.h"
@@ -77,6 +78,7 @@ private:
 
   ToneImage image_;
   AlphaTween imageFade_{image_};
+  BusyGrace busyGrace_;
   LoadingDots dots_;
   RetryLoadBadge retry_;
   // The translucent strip under the quick actions so they read on any art;

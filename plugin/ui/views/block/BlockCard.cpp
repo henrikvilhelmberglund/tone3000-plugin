@@ -251,6 +251,15 @@ void BlockCard::setBlock(const ChainItem& block, bool namDownstream) {
   syncFromBlock();
 }
 
+// The loading look (dimmed artwork, spinner) after a short grace, so a quick
+// switch (a local capture) leaves the picture as it is.
+void BlockCard::syncBusy() {
+  const bool busy = busyGrace_.shown(modelBusy(), [this] { syncBusy(); }) || block_.loadFailed;
+  image_.setAlpha(busy ? kImageBusyOpacity : 1.0f);
+  loading_.setVisible(busy && !block_.loadFailed);
+  retry_.setVisible(block_.loadFailed);
+}
+
 void BlockCard::syncFromBlock() {
   power_.setOn(enabled_);
   body_.setOff(!enabled_);
@@ -279,10 +288,7 @@ void BlockCard::syncFromBlock() {
   normalizeWrap_.setMouseCursor(juce::MouseCursor::NormalCursor);
 
   image_.setTone(block_.tone.image, block_.tone.gear, block_.tone.local);
-  const bool busy = modelBusy() || block_.loadFailed;
-  image_.setAlpha(busy ? kImageBusyOpacity : 1.0f);
-  loading_.setVisible(busy && !block_.loadFailed);
-  retry_.setVisible(block_.loadFailed);
+  syncBusy();
 
   if (eqEditor_) {
     eqEditor_->setBands(block_.params.eq.bands);

@@ -22,6 +22,7 @@
 #include "BlockEqView.h"
 #include "ToneMeta.h"
 #include "core/AsyncScope.h"
+#include "core/BusyGrace.h"
 #include "model/ChainState.h"
 #include "model/Tone.h"
 #include "services/ParamBinding.h"
@@ -85,6 +86,7 @@ private:
   int layoutInfoBody(juce::Rectangle<int> body);
   Body body() const { return showEq_ ? Body::eq : showInfo_ ? Body::info : Body::tone; }
   void syncFromBlock();
+  void syncBusy();
   void syncHeader();
   void syncMeta();
   void syncModelSelect();
@@ -166,6 +168,7 @@ private:
   std::vector<Model> models_;
   bool modelsLoading_ = false;
   AsyncScope infoScope_, modelsScope_, favoriteScope_;
+  BusyGrace busyGrace_;
 };
 
 }  // namespace t3k::ui

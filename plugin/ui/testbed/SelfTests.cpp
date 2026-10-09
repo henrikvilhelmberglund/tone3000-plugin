@@ -16,6 +16,7 @@
 
 #include "Drive.h"
 #include "Host.h"
+#include "core/BusyGrace.h"
 #include "core/Design.h"
 #include "core/Fonts.h"
 #include "core/Help.h"
@@ -803,6 +804,31 @@ struct ToneModelTests : juce::UnitTest {
     const auto plain = User::parse(juce::JSON::parse(R"({"id":8,"username":"staas","display_name":null})"));
     expect(!plain.isVerified);
     expectEquals(plain.name(), juce::String("staas"));
+  }
+};
+
+// A quick load (a local model switch) never shows the loading look; a slow
+// one gets it after the grace.
+struct BusyGraceTests : juce::UnitTest {
+  BusyGraceTests() : juce::UnitTest("Busy grace", "ui") {}
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+  void runTest() override {
+    beginTest("a load waits out the grace before it shows; a quick one never does");
+    BusyGrace grace;
+    int shows = 0;
+    const auto show = [&] { ++shows; };
+    expect(!grace.shown(true, show), "not at once");
+    expect(!grace.shown(false, show), "done in a blink: nothing shown");
+    pump(BusyGrace::kGraceMs + 100);
+    expectEquals(shows, 0, "the finished load's wait went with it");
+
+    expect(!grace.shown(true, show), "a slow one starts waiting");
+    expect(!grace.shown(true, show), "a re-sync while waiting doesn't restart the wait");
+    pump(BusyGrace::kGraceMs + 100);
+    expectEquals(shows, 1, "the view is told once the grace is up");
+    expect(grace.shown(true, show), "and now it shows");
+    expect(!grace.shown(false, show), "until the load is done");
+    expect(!grace.shown(true, show), "the next load waits again");
   }
 };
 
@@ -2714,6 +2740,7 @@ DragScrollerTests dragScrollerTests;
 UiPrefsTests uiPrefsTests;
 Tone3000ClientTests tone3000ClientTests;
 ToneModelTests toneModelTests;
+BusyGraceTests busyGraceTests;
 BlockNormalizeSettingTests blockNormalizeSettingTests;
 ToneQueryTests toneQueryTests;
 ReadoutTests readoutTests;
