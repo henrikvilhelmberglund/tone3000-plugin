@@ -12,8 +12,9 @@ main design decisions, lists the known gaps, and collects ideas for later.
 
 ## Size and shape
 
-The branch is ten commits on top of upstream v0.0.12 (`ab5e5ae`). It touches
-98 files with about 22,600 added lines. About 6,200 of those are screenshot
+The branch is thirteen commits on top of upstream v0.0.12 (`ab5e5ae`): the
+ten it was opened with, and three follow-ups (11 to 13). It touches 98 files
+with about 23,000 added lines. About 6,200 of those are screenshot
 fixtures (`scenarios.json`), about 4,100 are tests and test support, and
 about 1,300 are docs, which leaves about 11,000 lines of product code.
 
@@ -32,10 +33,14 @@ own. They go from small and independent to large:
 | 8 | The Library drawer | feature | 64 |
 | 9 | Number keys and A/B on the block card | feature | 7 |
 | 10 | Docs: this page and the user's guide | docs | 2 |
+| 11 | Folder pictures follow a renamed library | bug fix | 3 |
+| 12 | Blocks follow their files through Library renames and moves | bug fix | 7 |
+| 13 | Docs: this page, for 11 and 12 | docs | 1 |
 
 Commits 1 to 5 stand alone and could be merged separately. Commit 6 is
 useful on its own for OS file drops, and the Library's drag and drop needs
-it. Commits 7 to 9 are the Library itself.
+it. Commits 7 to 9 are the Library itself, and 11 and 12 fix what renaming
+a library showed (below).
 
 ## Commit by commit
 
@@ -253,6 +258,42 @@ asks: without it, numbers worked only after clicking the model picker.
 
 [`library-guide.md`](library-guide.md) for users and this page.
 
+### 11. Folder pictures follow a renamed library
+
+**What:** when a path is renamed or moved in the Library (`remapPaths`),
+the paths of the picture files under it move too, not only the folders the
+pictures belong to. A block whose capture (or its original) sits under a
+folder whose picture moved is dressed again at once.
+
+**Why:** a library signed out on first use is named "My Library", and takes
+the TONE3000 username on the first sign-in (`adoptUsername`). Its
+`.t3kpictures` folder goes with it. Before this, the stored picture paths
+still named "My Library", and a block wearing one showed nothing until the
+project was reopened. The same happened on renaming your library in the
+drawer.
+
+### 12. Blocks follow their files through Library renames and moves
+
+**What:** where the processor already re-points the active preset after a
+rename or move (`libraryRename`, `libraryMove`, `libraryMoveAsync`),
+`relinkLocalFiles` re-points the blocks too. Each local block's model URLs,
+source paths and a picture under the moved path are rewritten. The move is
+also remembered for the process (`noteLocalFilesMoved`, up to 500 moves),
+and `resolveLocalModelFile` follows those moves when a stored path is gone.
+
+**Why:** captures play in place since commit 4, so a block names the user's
+file, not a stash copy. After a folder was renamed or moved in the drawer,
+playing and saving still worked (the session stores the bytes), but
+anything that reads the file again failed:
+- an undo bringing a removed block back;
+- a retry;
+- switching to another model of the folder;
+- the UI's kept links and pictures, which go by the block's source path.
+
+Following moves inside `resolveLocalModelFile` also covers undo snapshots,
+which keep their own copy of the old path, and other instances in the same
+host.
+
 ## Things to look at closely
 
 - **Threads.** `Backend::getLibrary` (worker), `prepareLocalToneInFolder`
@@ -279,8 +320,8 @@ asks: without it, numbers worked only after clicking the model picker.
 ## Tests
 
 - **DSP tests (GoogleTest):**
-  - `library_tests.cpp` (37): file layer, formats, archives, state, sharing,
-    processor glue;
+  - `library_tests.cpp` (38): file layer, formats, archives, state, sharing,
+    processor glue, blocks following renames and moves;
   - `local_load_tests.cpp` (+6): folder loads, in-place, error pages, sort;
   - `chain_slot_tests.cpp` (4): splicing beside a block;
   - `nam_architecture_tests.cpp` (2): the A1 folder-name rule.
@@ -313,6 +354,16 @@ with `DspTests --gtest_filter="Library*:LocalLoad*:ChainSlot*:NamArch*"`.
   when the editor closes.
 - **Set Folder...** points the Library at another folder. It doesn't offer
   to move the old one there.
+- **Renames and moves outside the plugin** (in Explorer or Finder) aren't
+  followed by blocks. Commit 12 only knows the moves the drawer made. A
+  block playing a file renamed elsewhere keeps its old path: it plays and
+  saves as before (the session stores the bytes), and the project reopens.
+  But undo after removing it, a retry, or switching to another capture of
+  its folder reports the file missing until the capture is loaded again
+  from the Library. Kept links and folder pictures can be reconnected with
+  **Missing Files**, which asks where the files went. The moves the drawer
+  made are also forgotten when the plugin unloads. That only matters for
+  undo, whose history goes with it.
 
 ## Ideas for later
 
