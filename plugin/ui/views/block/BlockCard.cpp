@@ -403,6 +403,12 @@ void BlockCard::openKeptMenu() {
   keptMenu_->openAtPoint(kept_, {0, kept_.getHeight()});
 }
 
+bool BlockCard::stepModel(int delta) {
+  if (!select_.isShowing()) return false;
+  select_.step(delta);
+  return true;
+}
+
 void BlockCard::syncFromBlock() {
   power_.setOn(enabled_);
   body_.setOff(!enabled_);

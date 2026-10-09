@@ -1,8 +1,9 @@
 #include "PluginRoot.h"
 
+#include <functional>
+
 #include "block/BlockCard.h"
 #include "library/LibraryDrawer.h"
-
 #include "core/Design.h"
 #include "core/Help.h"
 #include "core/NoDefaultFocus.h"
@@ -296,7 +297,11 @@ bool PluginRoot::FocusPolicy::keyPressed(const juce::KeyPress& key, juce::Compon
   // it when the OS activates it) is nothing focused as far as the UI goes.
   auto* focused = juce::Component::getCurrentlyFocusedComponent();
   if (focused != nullptr && root_.isParentOf(focused)) return false;
-  if (root_.blockKey(key)) return true;  // nothing focused: the open card's numbers, A/B
+  // The model keys before the scroll keys: with a block card open, left /
+  // right step its model (handleModelKey), and a number or "a" is the card's
+  // (its model, A/B); otherwise they scroll.
+  if (root_.handleModelKey(key)) return true;
+  if (root_.blockKey(key)) return true;
   if (key.isKeyCode(juce::KeyPress::tabKey)) {
     // The Settings takeover is its own Tab cycle while it is up: its content
     // is out of the root's order, and the chrome under it must stay out of
@@ -331,6 +336,12 @@ DragScroller* PluginRoot::frontScroller() {
 }
 
 void PluginRoot::FocusPolicy::mouseDown(const juce::MouseEvent& e) {
+  // A Windows host doesn't give a plugin's window the keyboard on a click:
+  // take it, so the model keys (left / right) reach the editor; the keys we
+  // don't use go back to the host (NativeEditor::keyPressed).
+  const bool takeKeys = root_.services_.backend.takesKeyboardOnClick();
+  if (takeKeys)
+    if (auto* peer = root_.getPeer(); peer != nullptr && !peer->isFocused()) peer->grabFocus();
   // Runs after the pressed component's own mouseDown, so a click that gave
   // focus (a text field) has already done so: keep focus when it sits on the
   // pressed component's line of ancestry either way (an editor inside its
@@ -344,13 +355,20 @@ void PluginRoot::FocusPolicy::mouseDown(const juce::MouseEvent& e) {
   }
   // A click that took the keyboard nowhere (empty space, the faceplate) with
   // a block's card open: the card takes it, so its numbers and A/B work
-  // after any click. A host gives the plugin's window the keyboard only when
-  // something in it asks. Not a click in the Library drawer (its own keys).
-  if (pressed == nullptr || (focused != nullptr && root_.isParentOf(focused))) return;
-  if (pressed->findParentComponentOfClass<LibraryDrawer>() != nullptr || dynamic_cast<LibraryDrawer*>(pressed) != nullptr)
-    return;
-  if (!root_.isParentOf(pressed) && pressed != &root_) return;
-  if (auto* card = root_.openCard()) card->grabKeyboardFocus();
+  // after any click. Not a click in the Library drawer (its own keys).
+  const bool nowhere = pressed != nullptr && (focused == nullptr || !root_.isParentOf(focused)) &&
+                       (root_.isParentOf(pressed) || pressed == &root_) &&
+                       pressed->findParentComponentOfClass<LibraryDrawer>() == nullptr &&
+                       dynamic_cast<LibraryDrawer*>(pressed) == nullptr;
+  if (nowhere)
+    if (auto* card = root_.openCard()) card->grabKeyboardFocus();
+  // The window's focus alone isn't enough: the plugin wrappers' keyboard hook
+  // hands a key to the editor only while a component in it holds JUCE focus
+  // (else the host's message loop keeps it: Bitwig's does). With no control
+  // focused, the editor (focusable for this, see NativeEditor) holds it.
+  if (takeKeys && juce::Component::getCurrentlyFocusedComponent() == nullptr)
+    if (auto* editor = root_.getParentComponent(); editor != nullptr && editor->getWantsKeyboardFocus())
+      editor->grabKeyboardFocus();
 }
 
 BlockCard* PluginRoot::openCard() {
@@ -373,13 +391,27 @@ bool PluginRoot::blockKey(const juce::KeyPress& key) {
 
 bool PluginRoot::keyPressed(const juce::KeyPress& key) {
   // Bubbled up from whatever was focused, unused: the open card's, if it is
-  // one of its keys.
+  // one of its keys (left / right its model, a number, "a").
+  if (handleModelKey(key)) return true;
   if (blockKey(key)) return true;
   if (key != juce::KeyPress::escapeKey) return false;
   auto* focused = getCurrentlyFocusedComponent();
   if (focused == nullptr || !isParentOf(focused)) return false;
   focused->giveAwayKeyboardFocus();
   return true;
+}
+
+// Left / right: the model before / after, of the open block card. Called
+// with keys no focused control used (a Tab-focused knob or a text field
+// keeps its arrows): from here when focus sits inside the root, and from the
+// editor when nothing has focus (the peer hands keys to the top-level
+// component, and keys travel up, never down to us).
+bool PluginRoot::handleModelKey(const juce::KeyPress& key) {
+  const int code = key.getKeyCode();
+  const bool back = code == juce::KeyPress::leftKey, on = code == juce::KeyPress::rightKey;
+  if (!(back || on) || key.getModifiers().isAnyModifierKeyDown()) return false;
+  auto* card = openCard();
+  return card != nullptr && card->stepModel(back ? -1 : 1);
 }
 
 void PluginRoot::bannerShow() {

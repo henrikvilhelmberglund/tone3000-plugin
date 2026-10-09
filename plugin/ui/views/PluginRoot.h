@@ -111,6 +111,9 @@ public:
   void resized() override;
   void parentHierarchyChanged() override;
   // Escape drops a focused control's focus (a text field takes its own Escape).
+  // The model keys (see the definition); the editor calls it with the keys
+  // that reach it unfocused.
+  bool handleModelKey(const juce::KeyPress& key);
   bool keyPressed(const juce::KeyPress& key) override;
   // A number or "a" typed with a block's card open, that nothing focused
   // took (a click on the EQ, the faceplate, nowhere): the card's (its model,
