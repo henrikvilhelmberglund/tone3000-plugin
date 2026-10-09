@@ -153,6 +153,17 @@ juce::uint64 fnv1a64(const void* data, size_t size) {
 constexpr juce::int64 kMaxLocalFileBytes = 50 * 1024 * 1024;
 constexpr int kMaxFolderModels = 300;
 
+// Natural order of model files by name, the extension left out: with it,
+// "Gain 4.nam" sorts after "Gain 4.5.nam" ('.' then "nam" against "5.nam",
+// and '5' < 'n'). Full names break a tie (the same name as .nam and .wav).
+bool localNameLess(const juce::String& a, const juce::String& b) {
+  const auto stemA = a.upToLastOccurrenceOf(".", false, false);
+  const auto stemB = b.upToLastOccurrenceOf(".", false, false);
+  if (const int byStem = stemA.compareNatural(stemB); byStem != 0)
+    return byStem < 0;
+  return a.compareNatural(b) < 0;
+}
+
 // Best-effort catalog gear id ("amp", "amp-cab", "cab", "pedal", "outboard")
 // for a local NAM file, from the trainer-written `metadata.gear_type`. The
 // field is free text, so only the common spellings map; anything else (or
@@ -436,7 +447,7 @@ juce::var TONE3000Processor::loadLocalTonePath(const juce::File& source,
     // Listing order is filesystem-dependent; natural name order keeps the
     // model list stable ("amp 2" before "amp 10"), like the UI's drop path.
     std::sort(picked.begin(), picked.end(), [](const juce::File& a, const juce::File& b) {
-      return a.getFileName().compareNatural(b.getFileName()) < 0;
+      return localNameLess(a.getFileName(), b.getFileName());
     });
 
     juce::Array<juce::var> models;
@@ -494,7 +505,7 @@ juce::var TONE3000Processor::loadLocalToneUrls(const juce::Array<juce::URL>& sou
   // is stable regardless of the order the picker reports.
   juce::Array<juce::URL> picked(sources);
   std::sort(picked.begin(), picked.end(), [](const juce::URL& a, const juce::URL& b) {
-    return localFileNameFromUrl(a).compareNatural(localFileNameFromUrl(b)) < 0;
+    return localNameLess(localFileNameFromUrl(a), localFileNameFromUrl(b));
   });
 
   juce::Array<juce::var> models;

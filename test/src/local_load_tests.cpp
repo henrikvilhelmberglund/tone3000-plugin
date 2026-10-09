@@ -258,6 +258,25 @@ TEST(LocalLoadTest, PathLoadsFolderMajorityExtensionInNaturalOrder) {
   dir.deleteRecursively();
 }
 
+// Natural order by name, extension aside: "4" before "4.5" before "10".
+TEST(LocalLoadTest, FolderModelsSortByNameWithoutTheExtension) {
+  const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("t3k-natural-order");
+  dir.deleteRecursively();
+  ASSERT_TRUE(dir.createDirectory().wasOk());
+  // Different files: identical bytes would share an id and drop all but one.
+  ASSERT_TRUE(testFile("a2-amp-test.nam").copyFileTo(dir.getChildFile("Gain 4.5.nam")));
+  ASSERT_TRUE(testFile("a2-amp-cab-test.nam").copyFileTo(dir.getChildFile("Gain 10.nam")));
+  ASSERT_TRUE(testFile("a2-am-test-2.nam").copyFileTo(dir.getChildFile("Gain 4.nam")));
+  TONE3000Processor proc;
+  const juce::var res = proc.loadLocalTonePath(dir);
+  ASSERT_TRUE(res["error"].isVoid()) << res["error"].toString().toStdString();
+  const juce::var models = firstToneBlock(proc)["tone"]["models"];
+  juce::StringArray names;
+  for (int i = 0; i < models.size(); ++i) names.add(models[i]["name"].toString());
+  EXPECT_EQ(names.joinIntoString("|"), juce::String("Gain 4|Gain 4.5|Gain 10"));
+  dir.deleteRecursively();
+}
+
 TEST(LocalLoadTest, PathRejectsBadInputs) {
   TONE3000Processor proc;
 
