@@ -1,5 +1,7 @@
 #include "PluginRoot.h"
 
+#include "library/LibraryDrawer.h"
+
 #include "core/Design.h"
 #include "core/Help.h"
 #include "core/NoDefaultFocus.h"
@@ -59,6 +61,26 @@ PluginRoot::PluginRoot(Services& services)
 
   header_.onOpenSettings = [this] { openSettings(); };
 
+  // The Library: the header toggles the drawer, a tile's "Add to Library"
+  // opens it, and a preset loaded from it leaves any takeover first.
+  header_.onToggleLibrary = [this](bool show) { setLibraryShown(show); };
+  // Open where this instance had it.
+  if (services_.library.savedShown())
+    juce::MessageManager::callAsync([safe = juce::Component::SafePointer<PluginRoot>(this)] {
+      if (safe != nullptr) safe->setLibraryShown(true);
+    });
+  // Asked from a tile or a block card: leave the tuner / browser (they hide
+  // the drawer) but not an open card, which is where Keep was pressed.
+  services_.library.onRequestShow = [this] {
+    setTunerShown(false);
+    if (browserShown()) {
+      services_.loadFlow.clearPendingTargets();
+      setBrowserShown(false);
+    }
+    setLibraryShown(true);
+  };
+  services_.library.beforePresetLoad = [this] { showChainThen({}); };
+
   addAndMakeVisible(header_);
   addAndMakeVisible(main_);
   addAndMakeVisible(faceplate_);
@@ -90,6 +112,9 @@ PluginRoot::~PluginRoot() {
   if (keyWindow_ != nullptr) keyWindow_->removeKeyListener(&focusPolicy_);
   services_.session.onAuthenticated = nullptr;
   services_.loadFlow.onShowBrowser = nullptr;
+  services_.library.onRequestShow = nullptr;
+  services_.library.beforePresetLoad = nullptr;
+  library_.reset();  // unsubscribes from the stores before they go
   if (watchedParent_ != nullptr) watchedParent_->removeComponentListener(this);
   services_.session.removeListener(this);
   services_.updates.removeListener(this);
@@ -108,6 +133,7 @@ juce::Image PluginRoot::snapshotBeneathOverlay(float scale) {
   for (auto* child : getChildren()) {
     if (child == &overlay_ || !child->isVisible()) continue;
     g.saveState();
+    g.addTransform(child->getTransform());  // the chain + plate scaled beside the drawer
     g.setOrigin(child->getPosition());
     child->paintEntireComponent(g, true);
     g.restoreState();
@@ -388,6 +414,28 @@ void PluginRoot::setBrowserShown(bool shown) {
   resized();
 }
 
+void PluginRoot::setLibraryShown(bool shown) {
+  if (shown == libraryShown()) return;
+  services_.library.setShown(shown);
+  if (shown) {
+    library_ = std::make_unique<LibraryDrawer>(services_);
+    library_->onClose = [this] {
+      // Deferred: the close click comes from a button inside the drawer.
+      juce::MessageManager::callAsync([safe = juce::Component::SafePointer<PluginRoot>(this)] {
+        if (safe != nullptr) safe->setLibraryShown(false);
+      });
+    };
+    // Above the chain and faceplate, below the takeovers and the overlay.
+    addChildComponent(*library_, getIndexOfChildComponent(&faceplate_) + 1);
+  } else {
+    services_.library.cancelAdd();
+    library_.reset();
+  }
+  header_.setLibraryShown(shown);
+  syncTakeovers();
+  resized();
+}
+
 // What a takeover covers is hidden, not left painting underneath: the meters
 // tick at 30 Hz and would otherwise repaint for nothing.
 void PluginRoot::syncTakeovers() {
@@ -397,6 +445,7 @@ void PluginRoot::syncTakeovers() {
   faceplate_.setVisible(tuner || !column);
   if (browser_) browser_->setVisible(!tuner && !signIn);
   if (signIn_) signIn_->setVisible(!tuner);
+  if (library_) library_->setVisible(!tuner && !column);
 }
 
 void PluginRoot::closeTunerThen(const std::function<void()>& fn) {
@@ -463,9 +512,33 @@ void PluginRoot::resized() {
   header_.setBounds(column.removeFromTop(PluginHeader::kHeight));
   if (browser_) browser_->setBounds(column);  // the rest, faceplate included
   if (signIn_) signIn_->setBounds(column);
-  faceplate_.setBounds(column.removeFromBottom(Faceplate::kHeight));
-  main_.setBounds(column);
-  if (tuner_) tuner_->setBounds(column);
+  // The drawer spans the column's height at its left. Beside it, the chain
+  // band and the faceplate keep their full-width layout and are scaled down
+  // together to fit, laid out taller so they fill the height: their parts
+  // have fixed footprints (the 800px block card, the plate's knob groups),
+  // so squeezing them would overlap them, and covering them would hide them.
+  // Every tile stays a drop target.
+  const bool drawer = library_ != nullptr && library_->isVisible();
+  if (library_) library_->setBounds(column.withWidth(LibraryDrawer::kWidth));
+  auto band = column;
+  const auto plate = band.removeFromBottom(Faceplate::kHeight);
+  if (drawer) {
+    const auto beside = column.withTrimmedLeft(LibraryDrawer::kWidth);
+    const float scale = beside.getWidth() / static_cast<float>(design::kWidth);
+    const int innerH = juce::roundToInt(beside.getHeight() / scale);
+    const auto fit = juce::AffineTransform::scale(scale).translated(static_cast<float>(beside.getX()),
+                                                                   static_cast<float>(beside.getY()));
+    main_.setTransform(fit);
+    faceplate_.setTransform(fit);
+    main_.setBounds(0, 0, design::kWidth, innerH - Faceplate::kHeight);
+    faceplate_.setBounds(0, innerH - Faceplate::kHeight, design::kWidth, Faceplate::kHeight);
+  } else {
+    main_.setTransform({});
+    faceplate_.setTransform({});
+    faceplate_.setBounds(plate);
+    main_.setBounds(band);
+  }
+  if (tuner_) tuner_->setBounds(band);  // the drawer steps aside for the tuner
 
   // The toast floats above the faceplate, measured from the overlay's bottom.
   const int belowColumn = getHeight() - (slotH + design::kHeight + hintH);

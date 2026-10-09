@@ -25,6 +25,15 @@ enum class Key {
   // Presets
   presetPrev, presetNext, presetBrowse, presetSave, presetNew, presetRename, presetDelete,
   presetReorder, presetDrag, presetPcToggle, presetPc,
+  // Library drawer
+  library, libraryClose, librarySearch, libraryMenu, libraryLibrary, libraryOtherLibrary, libraryFolder,
+  libraryPreset, libraryTone, libraryCapture, libraryAddBlock, libraryPickFolder, libraryCancelAdd,
+  libraryNewFolder, librarySaveRig, libraryRename, libraryDelete, libraryCopyToMine, libraryExport,
+  libraryImport, libraryChooseRoot, libraryReveal, libraryRefresh, libraryUse, libraryLink, libraryUnlink,
+  libraryLinked, libraryFavorites, libraryFavorite, libraryUnfavorite, libraryAudition, libraryAddNew,
+  libraryCapturesRoot, libraryPresetsRoot, libraryImportFolder, libraryLoadFolder, libraryKeepHere,
+  libraryStopKeeping, libraryKeeping, libraryShare, libraryChooseBlock, libraryMissing, libraryShowMissing, libraryFindMissing, libraryDownloadMissing, libraryHideMissing, libraryForgetMissing, libraryKeep, libraryOriginal, libraryKept, libraryGoOriginal, libraryGoKept, libraryOwnFolder, libraryShowBlock, libraryOpenSite, libraryKeepMore, libraryKeepCapture, libraryKeepTone, libraryDownloadTone, libraryLoadOriginal, librarySite, librarySiteCaptures, librarySitePresets, libraryLocal, libraryMoveUp, libraryMoveDown, librarySetPicture, libraryCardPicture,
+  libraryRemovePicture, libraryAddHere,
   // Tone browser
   browserSearch, browserSearchProfile, browserMoreFilters, browserFewerFilters, browserVerified, browserProfile, browserGear,
   browserSort, browserFormat, browserTags, browserMakes, browserCreators, browserCalibrated,

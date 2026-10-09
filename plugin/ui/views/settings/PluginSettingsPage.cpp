@@ -131,6 +131,9 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
       midi_("MIDI Mapping",
             "Control the plugin from pedals and knobs. Mappings are saved with the plugin and work in your DAW too."),
       midiSection_(services),
+      libraryNumberLoads_("Library: Number Keys Load",
+                          "In the Library, type a number to jump to that capture in its folder and load it. "
+                          "Off: it is only selected, and Enter loads it."),
       presets_("Presets",
                "Your saved presets are files in a folder you can back up, share, or copy to another computer."),
       openPresets_("Open presets folder", FormButton::text(form::kBodyPx, false, theme::kLinkBlue)),
@@ -201,6 +204,10 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
   midi_.content().add(midiSection_);
   add(midi_);
 
+  // Library.
+  libraryNumberLoads_.onChange = [this](bool on) { services_.prefs.setBool(UiPrefs::kLibraryNumberLoads, on); };
+  add(libraryNumberLoads_);
+
   // Presets: a link to the folder the files live in. Hidden where there is
   // no file browser to open (iOS).
   if (services_.backend.canOpenPresetsFolder()) {
@@ -252,13 +259,15 @@ PluginSettingsPage::~PluginSettingsPage() {
 
 void PluginSettingsPage::prefChanged(const juce::String& key) {
   if (key == UiPrefs::kShowHints || key == UiPrefs::kShowGateControl || key == UiPrefs::kShowPitchControl ||
-      key == UiPrefs::kShowBlockSizeControl || key == UiPrefs::kShowBlockNormalizeControl)
+      key == UiPrefs::kShowBlockSizeControl || key == UiPrefs::kShowBlockNormalizeControl ||
+      key == UiPrefs::kLibraryNumberLoads)
     syncPrefs();
 }
 
 void PluginSettingsPage::syncPrefs() {
   infoBar_.setValue(services_.hints.enabled());
   showGate_.setValue(services_.prefs.getBool(UiPrefs::kShowGateControl, true));
+  libraryNumberLoads_.setValue(services_.prefs.getBool(UiPrefs::kLibraryNumberLoads, true));
   showPitch_.setValue(services_.prefs.getBool(UiPrefs::kShowPitchControl, false));
   const bool size = services_.prefs.getBool(UiPrefs::kShowBlockSizeControl, false);
   blockSize_.setValue(size);

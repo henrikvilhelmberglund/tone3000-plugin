@@ -76,6 +76,9 @@ struct ToneModelRef {
   int id = 0;
   juce::String name;
   juce::String modelUrl;  // local tones only
+  // Local tones loaded from a file on disk: that file (the block plays a
+  // stash copy of it). Empty for drops that came as bytes.
+  juce::String sourcePath;
 };
 
 struct ToneUserRef {

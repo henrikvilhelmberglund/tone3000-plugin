@@ -51,7 +51,9 @@ private:
 // The lanes column inside the scroller: both lanes (the branch lane indented
 // past the trunk prefix) and the two-lane elbow of an active branch, drawn
 // with the same lines as the ghost rail.
-class ChainView::Column : public juce::Component, public juce::FileDragAndDropTarget {
+class ChainView::Column : public juce::Component,
+                          public juce::FileDragAndDropTarget,
+                          public juce::DragAndDropTarget {
 public:
   explicit Column(ChainView& view) : view_(view) {}
 
@@ -63,6 +65,26 @@ public:
   void filesDropped(const juce::StringArray& files, int x, int y) override {
     view_.clearDropMark();
     if (const auto gap = view_.gapAt({x, y})) view_.services_.localFiles.drop(gap->target, files);
+  }
+  bool isInterestedInDragSource(const SourceDetails& details) override {
+    const auto* node = view_.services_.library.tree().find(libraryPath(details));
+    // An item or a captures folder; a preset replaces the chain, no gap for it.
+    return node != nullptr && node->kind != LibraryNode::Kind::preset && (!node->isContainer() || node->loadsAsBlock());
+  }
+  void itemDragEnter(const SourceDetails& details) override { hover(details.localPosition); }
+  void itemDragMove(const SourceDetails& details) override { hover(details.localPosition); }
+  void itemDragExit(const SourceDetails&) override { view_.clearDropMark(); }
+  void itemDropped(const SourceDetails& details) override {
+    view_.clearDropMark();
+    const auto gap = view_.gapAt(details.localPosition);
+    if (!gap) return;
+    // Posted: the load rebuilds the lanes.
+    juce::MessageManager::callAsync([safe = juce::Component::SafePointer<Column>(this), path = libraryPath(details),
+                                     target = gap->target] {
+      if (safe == nullptr) return;
+      auto& library = safe->view_.services_.library;
+      if (const auto* node = library.tree().find(path)) library.use(*node, target);
+    });
   }
 
   // The insertion bar, in the gap where the new block goes.
@@ -105,6 +127,9 @@ public:
 
 private:
   static constexpr float kMarkGlyph = 16.0f;
+  static juce::String libraryPath(const SourceDetails& details) {
+    return details.description.getProperty(LibraryStore::kDragKey, {}).toString();
+  }
   void hover(juce::Point<int> p) {
     if (const auto gap = view_.gapAt(p)) view_.showDropMark(gap->side, gap->boundary);
     else view_.clearDropMark();

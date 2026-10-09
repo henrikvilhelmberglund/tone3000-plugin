@@ -63,6 +63,33 @@ void GalleryTile::filesDropped(const juce::StringArray& files, int x, int) {
   services_.localFiles.drop(dropTarget(edgeAt(x)), files);
 }
 
+bool GalleryTile::isInterestedInDragSource(const SourceDetails& details) {
+  const auto path = details.description.getProperty(LibraryStore::kDragKey, {}).toString();
+  const auto* node = services_.library.tree().find(path);
+  // An item, or a captures folder (one block switching between its files).
+  return node != nullptr && (!node->isContainer() || node->loadsAsBlock());
+}
+
+// A preset replaces the whole chain, so it has no edges.
+GalleryTile::DropEdge GalleryTile::edgeFor(const SourceDetails& details) const {
+  const auto path = details.description.getProperty(LibraryStore::kDragKey, {}).toString();
+  const auto* node = services_.library.tree().find(path);
+  if (node == nullptr || node->kind == LibraryNode::Kind::preset) return DropEdge::none;
+  return edgeAt(details.localPosition.x);
+}
+
+void GalleryTile::itemDropped(const SourceDetails& details) {
+  const auto target = dropTarget(edgeFor(details));
+  setDrop(false, DropEdge::none);
+  const auto path = details.description.getProperty(LibraryStore::kDragKey, {}).toString();
+  // Posted: the load rebuilds the lane this tile sits in.
+  juce::MessageManager::callAsync([self = juce::Component::SafePointer<GalleryTile>(this), path, target] {
+    if (self == nullptr) return;
+    auto& library = self->services_.library;
+    if (const auto* node = library.tree().find(path)) library.use(*node, target);
+  });
+}
+
 std::vector<ContextMenu::Item> GalleryTile::localLoadItems() {
   return {
       {"Load File", Icon::File, help::Key::loadFileTile,

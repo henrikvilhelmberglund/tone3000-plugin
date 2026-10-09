@@ -108,6 +108,11 @@ std::vector<ContextMenu::Item> ToneTile::menuItems() {
                    [this] { if (onAddBeside) onAddBeside(slotBefore(blockId())); }});
   items.push_back({"Add After...", Icon::ArrowRight, help::Key::addAfter,
                    [this] { if (onAddBeside) onAddBeside(slotAfter(blockId())); }});
+  items.push_back({"Add to Library", Icon::LibraryBig, help::Key::libraryAddBlock,
+                   [this] { this->services().library.beginAdd(blockId()); }});
+  if (services().library.canShow(blockId()))
+    items.push_back({"Show in Library", Icon::FolderOpen, help::Key::libraryShowBlock,
+                     [this] { this->services().library.showBlock(blockId()); }});
   return items;
 }
 

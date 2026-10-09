@@ -42,7 +42,7 @@ public:
   virtual void tileDropEdge(GalleryTile& /*tile*/, std::optional<bool> /*after*/) {}
 };
 
-class GalleryTile : public juce::Component, public juce::FileDragAndDropTarget {
+class GalleryTile : public juce::Component, public juce::FileDragAndDropTarget, public juce::DragAndDropTarget {
 public:
   GalleryTile(Services& services, std::string blockId, int size);
   ~GalleryTile() override;
@@ -69,6 +69,14 @@ public:
   void fileDragMove(const juce::StringArray&, int x, int) override { setDrop(true, edgeAt(x)); }
   void fileDragExit(const juce::StringArray&) override { setDrop(false, DropEdge::none); }
   void filesDropped(const juce::StringArray& files, int x, int) override;
+
+  // Library rows (LibraryDrawer): items, and captures folders (one block
+  // switching between their files).
+  bool isInterestedInDragSource(const SourceDetails& details) override;
+  void itemDragEnter(const SourceDetails& details) override { setDrop(true, edgeFor(details)); }
+  void itemDragMove(const SourceDetails& details) override { setDrop(true, edgeFor(details)); }
+  void itemDragExit(const SourceDetails&) override { setDrop(false, DropEdge::none); }
+  void itemDropped(const SourceDetails& details) override;
 
   // Which part of the tile a drop at local x lands on (edge drops above).
   enum class DropEdge { none, before, after };
@@ -110,6 +118,7 @@ private:
   void openMenu(juce::Point<int> at);
   void closeMenu();
   void setDrop(bool armed, DropEdge edge);
+  DropEdge edgeFor(const SourceDetails& details) const;
   TileDragHost* host();
 
   Services& services_;
