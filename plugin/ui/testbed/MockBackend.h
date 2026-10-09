@@ -146,7 +146,11 @@ public:
     return recordEdit("createFolder", folder);
   }
   juce::File libraryRename(const juce::File& item, const juce::String& name) override {
-    return recordEdit("rename", item.getSiblingFile(name));
+    // On disk too when it is there, as the processor's rename (a library
+    // renamed takes its .t3kpictures along).
+    const auto target = item.getSiblingFile(name);
+    if (item.exists() && !target.exists()) item.moveFileTo(target);
+    return recordEdit("rename", target);
   }
   bool libraryRemove(const juce::File& item) override { return recordEdit("remove", item) != juce::File(); }
   juce::File libraryMove(const juce::File& item, const juce::File& folder) override {

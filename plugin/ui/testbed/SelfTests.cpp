@@ -1546,11 +1546,44 @@ struct LibraryFeatureTests : juce::UnitTest {
       prefs.set(LibraryStore::kRootPref, fresh.getFullPathName());
       prefs.set(LibraryStore::kOwnerPref, "My Library");
       fresh.getChildFile("My Library").createDirectory();
+      // The block plays a capture in it, wearing its folder's picture (kept
+      // in that library's .t3kpictures).
+      const auto mine = fresh.getChildFile("My Library");
+      const auto cabs = mine.getChildFile("Captures").getChildFile("Cabs");
+      cabs.createDirectory();
+      const auto cab = cabs.getChildFile("Cab.nam");
+      cab.replaceWithText("{}");
+      auto playsCab = juce::JSON::parse(juce::JSON::toString(chain));
+      playsCab.getDynamicObject()->setProperty("revision", 760);
+      if (auto* lane = playsCab["chain"].getArray())
+        for (auto& item : *lane)
+          if (item["blockId"].toString().toStdString() == blockId) {
+            auto model = item["tone"]["models"][0];
+            model.getDynamicObject()->setProperty("source_path", cab.getFullPathName());
+            model.getDynamicObject()->setProperty("model_url", juce::URL(cab).toString(false));
+          }
+      backend.forgetLocalToneLook(blockId);
+      backend.setChain(playsCab);
+      pump(200);
+      library.setPicture(cabs.getFullPathName(), root.getChildFile("cover.png"));
+      pump(100);
+      const auto wornFile = [&] { return juce::URL(backend.localToneLook(blockId)["image"].toString()).getLocalFile(); };
+      expect(wornFile().isAChildOf(mine) && wornFile().existsAsFile(), "the picture, in My Library");
+
       const auto edits = backend.libraryEdits().size();
       library.refresh();
       pump(200);
       expectEquals(prefs.get(LibraryStore::kOwnerPref), juce::String("tonehound"));
       expect(backend.libraryEdits().size() > edits && backend.libraryEdits()[edits].op == "rename", "renamed");
+      // The picture went with the library, and the block wears it from there.
+      const auto renamed = fresh.getChildFile("tonehound");
+      expect(wornFile().isAChildOf(renamed) && wornFile().existsAsFile(),
+             "the block's picture followed: " + wornFile().getFullPathName());
+      expect(library.pictureFor(renamed.getChildFile("Captures").getChildFile("Cabs").getFullPathName()).existsAsFile(),
+             "the folder's picture, under its new name");
+      chain.getDynamicObject()->setProperty("revision", 761);
+      backend.setChain(chain);  // back to Plexi alone
+      pump(200);
     }
     pluginRoot.setLibraryShown(false);
     window.setVisible(false);
