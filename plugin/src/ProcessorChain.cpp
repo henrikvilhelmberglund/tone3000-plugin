@@ -128,6 +128,16 @@ ParsedTone parseToneForLoading(const juce::String& toneJsonString) {
   }
 
   juce::DynamicObject* firstModel = modelsVar.getArray()->getReference(0).getDynamicObject();
+  // A local tone may name the model to start on (a capture loaded with its
+  // folder: the one picked, the others a step away in the picker). The list
+  // keeps its order; the hint is used once and dropped.
+  if (static_cast<bool>(toneObj->getProperty("local")) && toneObj->hasProperty("active_model_id")) {
+    const int wanted = toneObj->getProperty("active_model_id");
+    for (const auto& model : *modelsVar.getArray())
+      if (auto* obj = model.getDynamicObject(); obj != nullptr && static_cast<int>(obj->getProperty("id")) == wanted)
+        firstModel = obj;
+    toneObj->removeProperty("active_model_id");
+  }
   if (firstModel == nullptr) {
     DBG("First model is not a valid object");
     return out;
@@ -231,8 +241,11 @@ juce::var TONE3000Processor::makeToneSummary(const juce::var& toneVar) {
         juce::DynamicObject::Ptr slim = new juce::DynamicObject();
         slim->setProperty("id", model->getProperty("id"));
         slim->setProperty("name", model->getProperty("name"));
-        if (local)
+        if (local) {
           slim->setProperty("model_url", model->getProperty("model_url"));
+          if (model->hasProperty("source_path"))  // loaded from a file on disk
+            slim->setProperty("source_path", model->getProperty("source_path"));
+        }
         models.add(juce::var(slim.get()));
       }
     }
@@ -559,6 +572,58 @@ bool TONE3000Processor::refreshToneMetadata(const juce::String& toneJsonString) 
     bumpChainRevision();
   }
   return changed;
+}
+
+bool TONE3000Processor::setLocalToneArt(const std::string& blockId, const juce::var& art) {
+  const juce::String image = art.getProperty("image", "").toString();
+  const juce::String title = art.getProperty("block_title", "").toString();
+  const juce::String gear = art.getProperty("gear", "").toString();
+  const bool clear = art.getProperty("clear", false);
+  if (image.isEmpty() && title.isEmpty() && gear.isEmpty() && !clear)
+    return false;
+
+  juce::ScopedLock lock(chainMutex);
+  ChainBlock* block = findBlockById(blockId);
+  if (block == nullptr || block->type == ChainBlockType::INSERT || !static_cast<bool>(block->toneVar["local"]))
+    return false;
+
+  juce::var merged = block->toneVar.clone();
+  auto* tone = merged.getDynamicObject();
+  if (tone == nullptr)
+    return false;
+  if (title.isNotEmpty())
+    tone->setProperty("title", title);
+  if (gear.isNotEmpty())
+    tone->setProperty("gear", gear);  // the matched tone's (or the file name's), over the metadata
+  if (clear) {
+    tone->removeProperty("images");
+    tone->removeProperty("user");
+    tone->removeProperty("url");
+  }
+  if (image.isEmpty()) {
+    const juce::String cleared = juce::JSON::toString(merged);
+    if (cleared == block->toneJson)
+      return false;
+    setToneOnBlock(*block, block->toneId, cleared, merged);
+    bumpChainRevision();
+    return true;
+  }
+  tone->setProperty("images", juce::Array<juce::var>{image});
+  if (const auto username = art.getProperty("username", "").toString(); username.isNotEmpty()) {
+    juce::DynamicObject::Ptr user = new juce::DynamicObject();
+    user->setProperty("username", username);
+    user->setProperty("avatar_url", art.getProperty("avatar_url", ""));
+    tone->setProperty("user", juce::var(user.get()));
+  }
+  if (const auto url = art.getProperty("url", "").toString(); url.isNotEmpty())
+    tone->setProperty("url", url);
+
+  const juce::String json = juce::JSON::toString(merged);
+  if (json == block->toneJson)
+    return false;
+  setToneOnBlock(*block, block->toneId, json, merged);
+  bumpChainRevision();
+  return true;
 }
 
 bool TONE3000Processor::switchModel(const std::string& blockId, int modelId,
