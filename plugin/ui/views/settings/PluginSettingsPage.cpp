@@ -104,9 +104,9 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
       normalize_("Per-Block Normalization",
                  "Each block has normalization enabled, which levels output for consistent volume across signal "
                  "blocks. Turning this on reveals an optional control that lets you disable normalization per block."),
-      normalizeTip_(copy({TextRun::plain("Normalization is now controlled per block. Look for the "),
-                          TextRun::inlineBox(inline_chrome::icon(Icon::Equal)),
-                          TextRun::plain(" icon on each block, enabled by default.")})),
+      normalizeTip_(copy({TextRun::plain("Normalization is now controlled per block. Look for "),
+                          TextRun::inlineBox(inline_chrome::textButton("NORM")),
+                          TextRun::plain(" on each block, on by default.")})),
       calibrateParam_(services.backend, "calibrateInput"),
       dbuParam_(services.backend, "inputCalibrationLevel"),
       osEnabledParam_(services.backend, "osEnabled"),

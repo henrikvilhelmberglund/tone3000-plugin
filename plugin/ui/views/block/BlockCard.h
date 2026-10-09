@@ -134,7 +134,8 @@ private:
   LiveDotMeter inMeter_, outMeter_;
   Knob in_, out_, mix_;
   juce::Component normalizeWrap_;
-  ChromeIconButton normalize_{Icon::Equal, ChromeIconButton::Tone::power, help::Key::blockNormalize};
+  // Labelled, not a glyph: a bare "=" read as decoration and went unfound.
+  ChromeTextButton normalize_{"NORM", help::Key::blockNormalize};
   juce::Component imageFrame_;
   ToneImage image_;
   LoadingDots loading_;

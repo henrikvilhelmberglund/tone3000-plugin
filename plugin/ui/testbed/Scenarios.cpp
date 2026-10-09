@@ -108,6 +108,12 @@ const std::map<juce::String, Drive>& drives() {
       // tile click (the web dropped the seed before the chain arrived) only
       // re-opens it, leaving no hover behind once the gallery is gone.
       {"main-detail", [](PluginRoot&, MockBackend&) { wait(300); }},
+      {"main-detail-normalize",
+       [](PluginRoot& root, MockBackend&) {
+         wait(300);
+         root.services().prefs.setBool(UiPrefs::kShowBlockNormalizeControl, true);
+         wait(100);
+       }},
       {"load-detail-loading", [](PluginRoot&, MockBackend&) { wait(300); }},
       {"load-detail-failed", [](PluginRoot&, MockBackend&) { wait(300); }},
       {"main-detail-info",

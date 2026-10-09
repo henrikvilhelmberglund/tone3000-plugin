@@ -25,6 +25,7 @@
 #include "core/RichText.h"
 #include "core/TextFlow.h"
 #include "model/ChainState.h"
+#include "views/ChainScreen.h"
 #include "model/Tone.h"
 #include "model/ToneQuery.h"
 #include "services/ConnectionGate.h"
@@ -1770,6 +1771,66 @@ struct PopoverFollowTests : juce::UnitTest {
   }
 };
 
+// The Per-Block Normalization setting reveals the block card's Normalize
+// button on a card that is already open, not only on the next one built.
+struct BlockNormalizeSettingTests : juce::UnitTest {
+  BlockNormalizeSettingTests() : juce::UnitTest("Block normalize setting", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  void runTest() override {
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("main-detail");  // a NAM block's card is open
+    if (scenario == nullptr) {
+      expect(false, "main-detail scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    juce::DocumentWindow window("block normalize", juce::Colours::black, 0);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    window.setContentNonOwned(&host, true);
+    window.setVisible(true);
+    pump(400);
+    auto& root = host.pluginRoot();
+    auto& prefs = root.services().prefs;
+    const auto button = [&root] {
+      auto* c = drive::byHelpPrefix(root, "Normalize:");
+      return c != nullptr && c->isShowing();
+    };
+
+    beginTest("the button shows on the open card as soon as the setting is on");
+    prefs.setBool(UiPrefs::kShowBlockNormalizeControl, false);
+    pump(50);
+    expect(!button(), "hidden while the setting is off");
+    prefs.setBool(UiPrefs::kShowBlockNormalizeControl, true);
+    pump(50);
+    expect(button(), "shown without reopening the card");
+    prefs.setBool(UiPrefs::kShowBlockNormalizeControl, false);
+    pump(50);
+    expect(!button(), "and hidden again");
+
+    beginTest("a card opened with the setting already on shows it at once");
+    prefs.setBool(UiPrefs::kShowBlockNormalizeControl, true);
+    auto* chain = dynamic_cast<ChainScreen*>(drive::find(root, [](juce::Component& c) {
+      return dynamic_cast<ChainScreen*>(&c) != nullptr;
+    }));
+    expect(chain != nullptr);
+    if (chain != nullptr) {
+      chain->returnToGallery();
+      pump(100);
+      // A brand-new card, opened the way a user does: a click on its tile.
+      if (auto* tile = drive::find(root, [](juce::Component& c) {
+            auto* t = dynamic_cast<GalleryTile*>(&c);
+            return t != nullptr && t->blockId() == "blk-2";
+          }))
+        drive::click(root, *tile);
+      pump(200);
+    }
+    expect(button(), "Normalize on the fresh card");
+    window.setVisible(false);
+  }
+};
+
 // Services::pointer: a desktop build follows the input, and the gallery's
 // hover-revealed chrome pins while that input is a finger.
 struct PointerTests : juce::UnitTest {
@@ -2653,6 +2714,7 @@ DragScrollerTests dragScrollerTests;
 UiPrefsTests uiPrefsTests;
 Tone3000ClientTests tone3000ClientTests;
 ToneModelTests toneModelTests;
+BlockNormalizeSettingTests blockNormalizeSettingTests;
 ToneQueryTests toneQueryTests;
 ReadoutTests readoutTests;
 

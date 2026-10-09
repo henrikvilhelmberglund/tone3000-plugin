@@ -98,6 +98,10 @@ BlockCard::BlockCard(Services& services, const ChainItem& block, bool namDownstr
   fetchModels();
 
   setSize(kWidth, kHeight);
+  // Which controls show (Normalize, Keep) is the body view's call; a fresh
+  // card must make it too, or they only appeared after an EQ / info toggle
+  // or a setting change.
+  setBodyView();
 }
 
 BlockCard::~BlockCard() {
@@ -183,7 +187,7 @@ void BlockCard::buildBody() {
     syncFromBlock();
   };
   normalizeWrap_.addAndMakeVisible(normalize_);
-  normalizeWrap_.setSize(theme::kIconBoxSize, theme::kIconBoxSize);
+  normalizeWrap_.setSize(normalize_.getWidth(), normalize_.getHeight());
   body_.addChildComponent(normalizeWrap_);
 
   image_.setCornerRadius(kImageRadius);
@@ -268,7 +272,7 @@ void BlockCard::syncFromBlock() {
   }
 
   const bool overridden = normalizeOverridden();
-  normalize_.setOn(normalizeOn_ && !overridden);
+  normalize_.setArmed(normalizeOn_ && !overridden);
   normalize_.setEnabled(!overridden);
   normalize_.setInterceptsMouseClicks(!overridden, false);
   normalizeWrap_.setHelpText(help::text(overridden ? help::Key::blockNormalizeOverridden : help::Key::blockNormalize));
@@ -401,7 +405,13 @@ void BlockCard::sessionChanged() {
 }
 
 void BlockCard::prefChanged(const juce::String& key) {
-  if (key == UiPrefs::kShowBlockSizeControl || key == UiPrefs::kShowBlockNormalizeControl) syncFromBlock();
+  if (key == UiPrefs::kShowBlockSizeControl || key == UiPrefs::kShowBlockNormalizeControl) {
+    syncFromBlock();
+    // Which controls show is the body view's call (the normalize button
+    // lives there): without this an open card kept the old set until it was
+    // rebuilt, so turning the setting on showed nothing.
+    setBodyView();
+  }
 }
 
 // Derived state
@@ -555,15 +565,14 @@ void BlockCard::layoutToneBody(juce::Rectangle<int> body) {
   // Out rail (right-aligned): the meter stays over the Out knob whether or
   // not the normalize button widens the bottom row to its left.
   const bool normalize = normalizeWrap_.isVisible();
-  const int outRailW = knobW + (normalize ? theme::kIconBoxSize + kNormalizeGap : 0);
+  const int outRailW = knobW + (normalize ? normalizeWrap_.getWidth() + kNormalizeGap : 0);
   const int outX = content.getRight() - outRailW;
   pinBottom(out_, content.getRight() - knobW, knobW, bottom);
   meterSlot = juce::Rectangle<int>(content.getRight() - knobW, content.getY(), knobW, out_.getY() - kRailGap - content.getY());
   outMeter_.setCentrePosition(meterSlot.getCentre());
   if (normalize) {
-    // Bottom-aligned with the knob, nudged up to centre on the knob face.
-    const int nudge = (knobW - theme::kIconBoxSize) / 2;
-    normalizeWrap_.setTopLeftPosition(outX, bottom - theme::kIconBoxSize - nudge);
+    // Centred on the knob face.
+    normalizeWrap_.setTopLeftPosition(outX, bottom - knobW / 2 - normalizeWrap_.getHeight() / 2);
     normalize_.setTopLeftPosition(0, 0);
   }
 
