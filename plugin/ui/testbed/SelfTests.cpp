@@ -1107,6 +1107,7 @@ struct FocusPolicyTests : juce::UnitTest {
   }
 
   void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
     const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
     const auto* scenario = fixtures.find("main-stereo");  // stereo input: the Input Mode menu button shows
     if (scenario == nullptr) {
@@ -1335,6 +1336,7 @@ struct SettingsKeyboardTests : juce::UnitTest {
   SettingsKeyboardTests() : juce::UnitTest("Settings keyboard", "ui") {}
 
   void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
     using KP = juce::KeyPress;
     LiveScenario live(*this, "settings-system");  // standalone: the long System page
     if (!live.ok) return;
@@ -1688,6 +1690,7 @@ struct TouchScrollTests : juce::UnitTest {
   };
 
   void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
     const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
     const auto* scenario = fixtures.find("browser-search");
     if (scenario == nullptr) {
@@ -1805,6 +1808,7 @@ struct BlockNormalizeSettingTests : juce::UnitTest {
   static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
 
   void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
     const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
     const auto* scenario = fixtures.find("main-detail");  // a NAM block's card is open
     if (scenario == nullptr) {
@@ -2026,6 +2030,7 @@ struct PresetReorderTests : juce::UnitTest {
   }
 
   void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
     const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
     const auto* scenario = fixtures.find("chrome-preset-browse");  // two user presets, three factory
     if (scenario == nullptr) {
@@ -2122,6 +2127,7 @@ struct ChainCrossLaneDragTests : juce::UnitTest {
   }
 
   void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
     const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
     const auto* scenario = fixtures.find("main-stereo");  // L: l1 l2 ins / R: r1 r2 ins
     if (scenario == nullptr) {
@@ -2224,6 +2230,7 @@ struct BlockSizeToggleTests : juce::UnitTest {
   }
 
   void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
     const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
     const auto* scenario = fixtures.find("main-detail");
     if (scenario == nullptr) {
@@ -2288,6 +2295,7 @@ struct MidiMapCommitTests : juce::UnitTest {
   }
 
   void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
     const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
     const auto* scenario = fixtures.find("settings-midi-empty");
     if (scenario == nullptr) {
@@ -2378,6 +2386,7 @@ struct KnobReadoutTests : juce::UnitTest {
   }
 
   void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
     const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
     const auto* scenario = fixtures.find("main-stereo");
     if (scenario == nullptr) {
@@ -2466,6 +2475,7 @@ struct FaceplateEffectsTests : juce::UnitTest {
   }
 
   void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
     const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
     const auto* scenario = fixtures.find("main-mono");
     if (scenario == nullptr) {
@@ -2614,6 +2624,7 @@ struct FaceplateDualMonoTests : juce::UnitTest {
   }
 
   void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
     const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
     {
       const auto* scenario = fixtures.find("chrome-input-mode");  // mono chain, stereo source
@@ -2747,10 +2758,71 @@ ReadoutTests readoutTests;
 
 }  // namespace
 
-int runSelfTests() {
-  juce::UnitTestRunner runner;
+namespace {
+
+// Stops at the first failing group when asked to.
+struct SelfTestRunner : juce::UnitTestRunner {
+  bool failFast = false;
+  // Each test as it starts, at once: a crash names the test it was in (the
+  // summary comes only at the end).
+  void logMessage(const juce::String& message) override {
+    if (message.startsWith("Starting test")) std::cerr << message << std::endl;
+  }
+  bool shouldAbortTests() override {
+    if (!failFast) return false;
+    for (int i = 0; i < getNumResults(); ++i)
+      if (getResult(i)->failures > 0) return true;
+    return false;
+  }
+};
+
+// Groups that drive real pointer input, or need OS keyboard focus, through a
+// foreground window: a click elsewhere on the machine while they run takes
+// the focus and fails them.
+// --no-pointer leaves them out (someone is using the computer).
+const juce::StringArray kPointerGroups{"Library drawer", "Touch scroll",          "Pointer",
+                                       "Preset reorder", "Chain cross-lane drag", "Block size toggle",
+                                       "Knob readout",   "Focus policy",          "Scroll surfaces"};
+
+}  // namespace
+
+// A group may now run first (named on the command line). JUCE records an
+// expect into the test under way and dereferences null when there is none,
+// so every group begins a test before its first expect: one whose setup
+// checks something starts with beginTest("setup").
+int runSelfTests(const juce::StringArray& args) {
+  SelfTestRunner runner;
   runner.setAssertOnFailure(false);
-  runner.runTestsInCategory("ui");
+  juce::StringArray names;
+  bool noPointer = false;
+  for (const auto& arg : args) {
+    if (arg == "--selftest") continue;
+    if (arg == "--fail-fast") runner.failFast = true;
+    else if (arg == "--no-pointer") noPointer = true;
+    else if (const auto name = arg.unquoted().trim(); name.isNotEmpty())
+      names.add(name);  // (an empty one would match every test)
+  }
+  auto all = juce::UnitTest::getTestsInCategory("ui");
+  if (noPointer) {
+    all.removeIf([](juce::UnitTest* t) { return kPointerGroups.contains(t->getName()); });
+    std::cout << "skipped (pointer input): " << kPointerGroups.joinIntoString(", ") << std::endl;
+  }
+  if (names.isEmpty()) {
+    runner.runTests(all);
+  } else {
+    juce::Array<juce::UnitTest*> picked;
+    for (const auto& name : names)
+      for (auto* test : all)
+        if (test->getName().containsIgnoreCase(name)) picked.addIfNotAlreadyThere(test);
+    if (picked.isEmpty()) {
+      std::cout << "no ui test matches: " << names.joinIntoString(", ") << std::endl;
+      return 1;
+    }
+    juce::StringArray which;
+    for (auto* test : picked) which.add(test->getName());
+    std::cerr << "running: " << which.joinIntoString(", ") << std::endl;
+    runner.runTests(picked);
+  }
   int failures = 0;
   for (int i = 0; i < runner.getNumResults(); ++i) {
     const auto* r = runner.getResult(i);
