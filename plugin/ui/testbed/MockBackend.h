@@ -35,7 +35,10 @@ public:
   bool resetToDefault() override { return true; }
 
   std::string loadTone(const juce::String&, const std::string&) override { return {}; }
-  juce::var loadLocalTonePath(const juce::File&, const std::string&) override;
+  juce::var loadLocalTonePath(const juce::File&, const std::string& target) override;
+  // The target the last local load was sent to (an insert, a tone block, or
+  // a slot beside one: slotBefore / slotAfter).
+  const std::string& lastLocalLoadTarget() const { return lastLocalLoadTarget_; }
   juce::var loadLocalToneUrls(const juce::Array<juce::URL>&, const std::string&) override;
   bool swapTone(const std::string&, const juce::String&) override { return true; }
   bool refreshToneMetadata(const juce::String&) override { return true; }
@@ -151,6 +154,7 @@ private:
   juce::var midiMap_;
   juce::var presets_;
   std::vector<Move> presetMoves_;
+  std::string lastLocalLoadTarget_;
   std::vector<ChainMove> chainMoves_;
   std::vector<juce::String> machineDefaults_;
   juce::var meters_;

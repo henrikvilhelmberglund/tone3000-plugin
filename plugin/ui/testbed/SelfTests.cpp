@@ -39,8 +39,11 @@
 #include "views/browser/FilterChip.h"
 #include "views/browser/Paginator.h"
 #include "views/browser/ToneCard.h"
+#include "views/gallery/AddTile.h"
 #include "views/gallery/GalleryGeometry.h"
+#include "views/gallery/GalleryLane.h"
 #include "views/gallery/GalleryTile.h"
+#include "views/gallery/ToneTile.h"
 #include "widgets/Avatar.h"
 #include "widgets/ChromeTextButton.h"
 #include "widgets/Clickable.h"
@@ -1861,6 +1864,82 @@ struct BlockNormalizeSettingTests : juce::UnitTest {
   }
 };
 
+// A tone tile's edge drops (plugin/docs/chain-slots.md): the outer 30%
+// add a new block beside it, the middle swaps; an empty slot has no edges.
+struct ChainSlotTileTests : juce::UnitTest {
+  ChainSlotTileTests() : juce::UnitTest("Chain slot tiles", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  void runTest() override {
+    beginTest("setup");  // before any expect (see runSelfTests)
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("main-mono");
+    if (scenario == nullptr) {
+      expect(false, "main-mono scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    juce::DocumentWindow window("chain slots", juce::Colours::black, 0);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    window.setContentNonOwned(&host, true);
+    window.setVisible(true);
+    pump(400);
+    auto& root = host.pluginRoot();
+    auto* tone = dynamic_cast<ToneTile*>(drive::find(root, [](juce::Component& c) {
+      return dynamic_cast<ToneTile*>(&c) != nullptr;
+    }));
+    auto* add = dynamic_cast<AddTile*>(drive::find(root, [](juce::Component& c) {
+      return dynamic_cast<AddTile*>(&c) != nullptr;
+    }));
+    expect(tone != nullptr && add != nullptr, "the chain shows a tone tile and an empty slot");
+    if (tone == nullptr || add == nullptr) return;
+    using Edge = GalleryTile::DropEdge;
+    const int w = tone->getWidth();
+    const auto id = tone->blockId();
+
+    beginTest("a tone tile's outer edges add beside it; the middle swaps");
+    expect(tone->edgeAt(1) == Edge::before);
+    expect(tone->edgeAt(w / 2) == Edge::none);
+    expect(tone->edgeAt(w - 2) == Edge::after);
+    expectEquals(juce::String(tone->dropTarget(Edge::before)), juce::String(slotBefore(id)));
+    expectEquals(juce::String(tone->dropTarget(Edge::after)), juce::String(slotAfter(id)));
+    expectEquals(juce::String(tone->dropTarget(Edge::none)), juce::String(id));
+
+    beginTest("an empty slot has no edges: a drop anywhere fills it");
+    expect(add->edgeAt(1) == Edge::none);
+    expect(add->edgeAt(add->getWidth() - 2) == Edge::none);
+
+    beginTest("a file dropped on an edge loads into a new slot there");
+    tone->filesDropped({"C:/x/amp.nam"}, 1, 10);
+    expectEquals(juce::String(backend.lastLocalLoadTarget()), juce::String(slotBefore(id)));
+    tone->filesDropped({"C:/x/amp.nam"}, w - 2, 10);
+    expectEquals(juce::String(backend.lastLocalLoadTarget()), juce::String(slotAfter(id)));
+    tone->filesDropped({"C:/x/amp.nam"}, w / 2, 10);
+    expectEquals(juce::String(backend.lastLocalLoadTarget()), juce::String(id));
+
+    beginTest("the gaps take drops too: between two blocks, and before the first");
+    {
+      auto* lane = dynamic_cast<GalleryLane*>(drive::find(root, [](juce::Component& c) {
+        return dynamic_cast<GalleryLane*>(&c) != nullptr;
+      }));
+      auto* column = lane != nullptr ? dynamic_cast<juce::FileDragAndDropTarget*>(lane->getParentComponent()) : nullptr;
+      expect(column != nullptr, "the lanes' column takes file drops");
+      if (lane != nullptr && column != nullptr && lane->items().size() >= 2) {
+        const auto first = lane->items()[0].blockId, second = lane->items()[1].blockId;
+        const int y = lane->getY() + lane->getHeight() / 2;
+        const int between = lane->getX() + lane->tileSize() + gallery::kTileGap / 2;
+        column->filesDropped({"C:/x/amp.nam"}, between, y);
+        expectEquals(juce::String(backend.lastLocalLoadTarget()), juce::String(slotBefore(second)));
+        column->filesDropped({"C:/x/amp.nam"}, lane->getX() - 10, y);  // the margin before the chain
+        expectEquals(juce::String(backend.lastLocalLoadTarget()), juce::String(slotBefore(first)));
+      }
+    }
+
+    window.setVisible(false);
+  }
+};
+
 // Services::pointer: a desktop build follows the input, and the gallery's
 // hover-revealed chrome pins while that input is a finger.
 struct PointerTests : juce::UnitTest {
@@ -2753,6 +2832,7 @@ Tone3000ClientTests tone3000ClientTests;
 ToneModelTests toneModelTests;
 BusyGraceTests busyGraceTests;
 BlockNormalizeSettingTests blockNormalizeSettingTests;
+ChainSlotTileTests chainSlotTileTests;
 ToneQueryTests toneQueryTests;
 ReadoutTests readoutTests;
 

@@ -74,7 +74,9 @@ void ToneTile::syncState() {
   // After a short grace (BusyGrace): a quick switch leaves the tile as it is.
   const bool busy = busyGrace_.shown(block_.modelLoading || (!block_.loaded && !block_.loadFailed),
                                      [this] { syncState(); });
-  const bool armed = dropArmed();
+  // Only a drop on the middle swaps (the tile gives way to the drop glyph);
+  // an edge drop adds beside it, so the tile stays as it is.
+  const bool armed = dropArmed() && dropEdge() == DropEdge::none;
   image_.setVisible(!armed);
   imageFade_.animateTo(enabled_ && !busy && !block_.loadFailed ? 1.0f : kDimmedImage, kImageFadeMs);
   dots_.setVisible(!armed && busy && !block_.loadFailed);
@@ -102,6 +104,10 @@ std::vector<ContextMenu::Item> ToneTile::menuItems() {
        [this] { this->services().chain.copyBlock(blockId()); }},
   };
   for (auto& item : localLoadItems()) items.push_back(std::move(item));
+  items.push_back({"Add Before...", Icon::ArrowLeft, help::Key::addBefore,
+                   [this] { if (onAddBeside) onAddBeside(slotBefore(blockId())); }});
+  items.push_back({"Add After...", Icon::ArrowRight, help::Key::addAfter,
+                   [this] { if (onAddBeside) onAddBeside(slotAfter(blockId())); }});
   return items;
 }
 
@@ -141,16 +147,18 @@ void ToneTile::resized() {
 
 void ToneTile::paint(juce::Graphics& g) {
   paint::fill(g, getLocalBounds().toFloat(), gallery::kTileCorner, theme::kSurface);
-  if (dropArmed()) {
+  if (dropArmed() && dropEdge() == DropEdge::none) {
     const float s = gallery::kFileDropGlyphSize;
     Icons::draw(g, Icon::Upload, getLocalBounds().toFloat().withSizeKeepingCentre(s, s), theme::kGray);
   }
 }
 
 void ToneTile::paintOverChildren(juce::Graphics& g) {
-  if (dropArmed())
-    paint::dashedBorder(g, getLocalBounds().toFloat(), gallery::kTileCorner,
-                        gallery::kFileDropBorder, gallery::kAddTileBorderWidth);
+  // A drop on the middle swaps: the outline. An edge drop's mark is in the
+  // gap beside the tile (ChainView), the tile itself stays as it is.
+  if (dropArmed() && dropEdge() == DropEdge::none)
+    paint::dashedBorder(g, getLocalBounds().toFloat(), gallery::kTileCorner, gallery::kFileDropBorder,
+                        gallery::kAddTileBorderWidth);
 }
 
 }  // namespace t3k::ui

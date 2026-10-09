@@ -80,8 +80,10 @@ public:
   // Chain management methods
   // Load a tone into an insert slot. `targetInsertId` is the insert block the
   // user clicked (the UI remembers it across the tone-select flow); the new
-  // tone block takes that slot's position. When the id is absent or
-  // stale (undone away mid-flow), the active lane's first insert is used.
+  // tone block takes that slot's position. It may also be "before:<blockId>"
+  // / "after:<blockId>" (kSlotBeforePrefix): the tone splices in beside that
+  // block, nothing else moving. When the id is absent or stale (undone away
+  // mid-flow), the active lane's first insert is used.
   std::string loadTone(const juce::String& toneJsonString,
                        const std::string& targetInsertId = {});
   // Load dropped local files (`files` = [{ name, data }], base64 bytes; one

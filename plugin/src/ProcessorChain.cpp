@@ -1,6 +1,7 @@
 #include "Processor.h"
 #include <algorithm>
 #include <cmath>
+#include <optional>
 
 // ####################
 // CHAIN MANAGEMENT
@@ -27,6 +28,21 @@ namespace {
 
 bool isInsertBlock(const std::unique_ptr<ChainBlock>& b) {
   return b != nullptr && b->type == ChainBlockType::INSERT;
+}
+
+// A loadTone target naming a block to splice in beside (kSlotBeforePrefix).
+struct SlotBeside {
+  std::string blockId;
+  bool after = false;
+};
+
+std::optional<SlotBeside> slotBeside(const std::string& target) {
+  for (const bool after : {false, true}) {
+    const std::string prefix = after ? kSlotAfterPrefix : kSlotBeforePrefix;
+    if (target.size() > prefix.size() && target.compare(0, prefix.size(), prefix) == 0)
+      return SlotBeside{target.substr(prefix.size()), after};
+  }
+  return std::nullopt;
 }
 
 }  // namespace
@@ -301,7 +317,20 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString,
   // older UI that doesn't send one).
   Lane* targetLane = nullptr;
   Lane::iterator slot;
-  if (!targetInsertId.empty()) {
+  bool splice = false;  // a slot beside a block: insert there, consuming nothing
+  if (const auto beside = slotBeside(targetInsertId)) {
+    for (auto& l : lanes) {
+      auto it = std::find_if(l.begin(), l.end(), [&](const std::unique_ptr<ChainBlock>& b) {
+        return b != nullptr && b->id == beside->blockId;
+      });
+      if (it != l.end()) {
+        targetLane = &l;
+        slot = beside->after ? std::next(it) : it;
+        splice = true;
+        break;
+      }
+    }
+  } else if (!targetInsertId.empty()) {
     for (auto& l : lanes) {
       auto it = std::find_if(l.begin(), l.end(), [&](const std::unique_ptr<ChainBlock>& b) {
         return isInsertBlock(b) && b->id == targetInsertId;
@@ -322,7 +351,9 @@ std::string TONE3000Processor::loadTone(const juce::String& toneJsonString,
   // no engines, so destroying it under the lock is fine). Alignment then
   // re-pads the lane, which appends a fresh trailing insert once every
   // minimum slot holds a tone, and keeps a branched layout's lane ends even.
-  if (slot != targetLane->end())
+  if (splice)
+    targetLane->insert(slot, std::move(block));  // the tail re-pads below
+  else if (slot != targetLane->end())
     *slot = std::move(block);
   else
     targetLane->push_back(std::move(block));

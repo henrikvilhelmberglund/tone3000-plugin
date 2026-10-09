@@ -31,16 +31,36 @@ void GalleryTile::setTravelling(bool travelling) {
   travellingChanged(travelling);
 }
 
-void GalleryTile::setDropArmed(bool armed) {
-  if (dropArmed_ == armed) return;
+void GalleryTile::setDrop(bool armed, DropEdge edge) {
+  if (dropArmed_ == armed && dropEdge_ == edge) return;
   dropArmed_ = armed;
+  dropEdge_ = armed ? edge : DropEdge::none;
+  if (auto* h = host())
+    h->tileDropEdge(*this, dropEdge_ == DropEdge::none ? std::optional<bool>() : std::optional<bool>(dropEdge_ == DropEdge::after));
   dropArmedChanged(armed);
   repaint();
 }
 
-void GalleryTile::filesDropped(const juce::StringArray& files, int, int) {
-  setDropArmed(false);
-  services_.localFiles.drop(blockId_, files);
+GalleryTile::DropEdge GalleryTile::edgeAt(int x) const {
+  if (!takesEdgeDrops()) return DropEdge::none;
+  const int zone = gallery::kTileGap;  // as wide as the gap beside it
+  if (x < zone) return DropEdge::before;
+  if (x >= getWidth() - zone) return DropEdge::after;
+  return DropEdge::none;
+}
+
+std::string GalleryTile::dropTarget(DropEdge edge) const {
+  switch (edge) {
+    case DropEdge::before: return slotBefore(blockId_);
+    case DropEdge::after: return slotAfter(blockId_);
+    case DropEdge::none: break;
+  }
+  return blockId_;
+}
+
+void GalleryTile::filesDropped(const juce::StringArray& files, int x, int) {
+  setDrop(false, DropEdge::none);
+  services_.localFiles.drop(dropTarget(edgeAt(x)), files);
 }
 
 std::vector<ContextMenu::Item> GalleryTile::localLoadItems() {

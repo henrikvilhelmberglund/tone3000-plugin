@@ -37,6 +37,9 @@ public:
   std::function<void(const std::string& blockId)> onOpen;
   // Swap: launch the Select flow to replace this block's tone in place.
   std::function<void(const std::string& blockId)> onSwap;
+  // Add Before / After: the Select flow for a new slot beside this block
+  // (target is slotBefore / slotAfter of it).
+  std::function<void(const std::string& target)> onAddBeside;
 
   void paint(juce::Graphics& g) override;
   void paintOverChildren(juce::Graphics& g) override;
@@ -46,6 +49,7 @@ protected:
   void open() override;
   std::vector<ContextMenu::Item> menuItems() override;
   void dropArmedChanged(bool armed) override;
+  bool takesEdgeDrops() const override { return true; }
   void travellingChanged(bool travelling) override;
 
 private:

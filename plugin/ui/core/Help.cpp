@@ -190,6 +190,8 @@ std::map<Key, String> buildTable() {
   t[Key::retryLoad] = U("Retry: re-download this model.");
   t[Key::swapTone] = U("Swap: replace this tone, keeping its slot.");
   t[Key::removeBlock] = U("Remove: delete this block.");
+  t[Key::addBefore] = U("Add Before: browse TONE3000 for a block in front of this one (or drop on its left edge).");
+  t[Key::addAfter] = U("Add After: browse TONE3000 for a block right after this one (or drop on its right edge).");
   t[Key::panLeft] = knobDesktop("Pan L", "Left chain, hard left ↔ center.");
   t[Key::panRight] = knobDesktop("Pan R", "Right chain, center ↔ hard right.");
   t[Key::panLink] = U("Link Pans: mirror both pan knobs.");
@@ -278,7 +280,7 @@ const String& text(Key key) {
 String toneTile(const String& title) {
   return kTouch ? title + U(". Tap: open · drag: reorder · touch and hold: menu.")
                 : title + U(". Click: open · drag: reorder · ") + alt("drag") +
-                      ": duplicate · right-click: copy / load file.";
+                      ": duplicate · right-click: copy / load file / add before or after · drop on an edge: add there.";
 }
 
 String bandType(const String& label) { return label + ": band curve shape."; }

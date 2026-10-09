@@ -172,7 +172,8 @@ juce::uint32 MockBackend::chainRevision() {
   return static_cast<juce::uint32>(static_cast<int>(chain_["revision"]));
 }
 
-juce::var MockBackend::loadLocalTonePath(const juce::File&, const std::string&) {
+juce::var MockBackend::loadLocalTonePath(const juce::File& file, const std::string& target) {
+  lastLocalLoadTarget_ = target;
   return obj({{"blockId", "blk-local"}});
 }
 

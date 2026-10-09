@@ -6,6 +6,7 @@
 #include "Drive.h"
 #include "views/PluginRoot.h"
 #include "views/browser/FilterChip.h"
+#include "views/gallery/ToneTile.h"
 #include "widgets/DbMeter.h"
 #include "widgets/DragScroller.h"
 
@@ -108,6 +109,15 @@ const std::map<juce::String, Drive>& drives() {
       // tile click (the web dropped the seed before the chain arrived) only
       // re-opens it, leaving no hover behind once the gallery is gone.
       {"main-detail", [](PluginRoot&, MockBackend&) { wait(300); }},
+      {"main-drop-edge",
+       [](PluginRoot& root, MockBackend&) {
+         wait(200);
+         auto* tile = dynamic_cast<ToneTile*>(drive::find(root, [](juce::Component& c) {
+           return dynamic_cast<ToneTile*>(&c) != nullptr;
+         }));
+         if (tile != nullptr) tile->fileDragEnter({"C:/captures/Boost.nam"}, 2, tile->getHeight() / 2);
+         wait(100);
+       }},
       {"main-detail-normalize",
        [](PluginRoot& root, MockBackend&) {
          wait(300);
