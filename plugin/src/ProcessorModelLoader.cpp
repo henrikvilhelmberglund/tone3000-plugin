@@ -119,10 +119,11 @@ bool namConfigIsA2(const nlohmann::json& modelJson) {
   return false;
 }
 
-// Stash folder for drop-loaded local models. The block's toneJson persists
-// the stash path as its model_url, so a cache-lost reload (undo after
-// remove, undo across a tone swap) re-reads this copy even after the user's
-// original file moved. Content-addressed names dedupe re-drops of the same
+// Stash folder for local models that arrive as bytes (the base64 route, the
+// iOS document picker): files on a desktop disk play where they are (see
+// stashLocalFileFromDisk). The block's toneJson persists the stash path as
+// its model_url, so a cache-lost reload (undo after remove, undo across a
+// tone swap) re-reads this copy. Content-addressed names dedupe re-drops of the same
 // file; stale entries age out (see cleanLocalModelStash). Same app-data
 // root as PresetManager. Persisted URLs are resolved back to this folder by
 // resolveLocalModelFile, which is what survives the iOS container rotating.
@@ -194,14 +195,15 @@ juce::String localGearFromIr(const juce::AudioFormatReader& reader) {
   return seconds <= kShortIrMaxSeconds ? "cab" : juce::String();
 }
 
-// One local file's bytes: validate and stash a content-addressed copy.
+// One local file's bytes: validate and stash a content-addressed copy, or,
+// with `inPlace`, point the model at that file instead (no copy).
 // Validation happens here, at load time, instead of letting a bad file
 // reach the background loader: its failure surfaces as a retry badge, which
 // is the wrong affordance for a file that can never load. Returns the model
 // object { id, name, model_url[, gear] } for the synthetic tone, or void
 // with `error` set to a user-facing message.
 juce::var stashLocalBytes(const juce::String& filename, juce::MemoryOutputStream& decoded,
-                          juce::String& error) {
+                          juce::String& error, const juce::File& inPlace = {}) {
   auto fail = [&](const juce::String& message) {
     juce::Logger::writeToLog("[LocalLoad] " + filename + ": " + message);
     error = message;
@@ -238,10 +240,15 @@ juce::var stashLocalBytes(const juce::String& filename, juce::MemoryOutputStream
   }
 
   const juce::uint64 hash = fnv1a64(decoded.getData(), decoded.getDataSize());
-  const juce::File stash = localModelsDir().getChildFile(
-      juce::String::toHexString(static_cast<juce::int64>(hash)) + "-" +
-      juce::String(static_cast<juce::int64>(decoded.getDataSize())) + "." + extension);
-  if (!stash.existsAsFile()) {
+  const juce::File stash = inPlace != juce::File()
+                               ? inPlace
+                               : localModelsDir().getChildFile(
+                                     juce::String::toHexString(static_cast<juce::int64>(hash)) + "-" +
+                                     juce::String(static_cast<juce::int64>(decoded.getDataSize())) + "." + extension);
+  if (inPlace != juce::File()) {
+    // Played where it is: nothing to write, and the user's file keeps its
+    // own dates (the GC's liveness stamp is for stash copies only).
+  } else if (!stash.existsAsFile()) {
     // The stash folder can exist without being writable (root-owned after a
     // sudo'd install script or a restored backup; github issue #76 saw every
     // drop fail here while validation kept passing). ensureWritableDir heals
@@ -283,8 +290,12 @@ juce::var stashLocalFile(const juce::String& filename, const juce::String& base6
   return stashLocalBytes(filename, decoded, error);
 }
 
-// A file native already has on disk (the tile menus' file picker flow;
-// no base64 round-trip).
+// A file native already has on disk (drops, the tile menus' file picker,
+// the Library; no base64 round-trip). On a desktop it plays where it is: no
+// copy in the stash (a folder of captures, or a linked collection, isn't
+// duplicated into app data), and presets and DAW state embed the bytes as
+// always, so a project still reopens if the file moves. iOS keeps the copy:
+// what its pickers hand over is only readable once.
 juce::var stashLocalFileFromDisk(const juce::File& file, juce::String& error) {
   juce::MemoryOutputStream bytes;
   juce::FileInputStream in(file);
@@ -293,7 +304,17 @@ juce::var stashLocalFileFromDisk(const juce::File& file, juce::String& error) {
     error = "Couldn't read the file";
     return {};
   }
-  return stashLocalBytes(file.getFileName(), bytes, error);
+#if JUCE_IOS
+  const juce::File inPlace;
+#else
+  const juce::File inPlace = file;
+#endif
+  juce::var model = stashLocalBytes(file.getFileName(), bytes, error, inPlace);
+  // Where it came from (on iOS the block plays the stash copy): the Library's
+  // Keep links a kept copy to its original through it.
+  if (auto* obj = model.getDynamicObject())
+    obj->setProperty("source_path", file.getFullPathName());
+  return model;
 }
 
 // A file the OS document picker handed us as a security-scoped URL.
@@ -725,10 +746,22 @@ juce::File TONE3000Processor::resolveLocalModelFile(const juce::File& stashRoot,
   // of reading from the embedded cache alone. Same bytes, one more file on
   // disk. Not gated on JUCE_IOS because that case is a repair, not a
   // regression.
+  // Only a stash copy's name (<hash>-<size>.<ext>) says which bytes it holds;
+  // a file played in place that has gone stays gone (the embedded cache
+  // covers presets and state), never some other file with its name.
   const juce::String name = stored.getFileName();
-  if (name.isEmpty() || name == "." || name == "..")
+  if (!isStashFileName(name))
     return stored;
   return stashRoot.getChildFile(name);
+}
+
+bool TONE3000Processor::isStashFileName(const juce::String& name) {
+  const auto stem = name.upToLastOccurrenceOf(".", false, false);
+  const auto ext = name.fromLastOccurrenceOf(".", false, false).toLowerCase();
+  const auto hash = stem.upToFirstOccurrenceOf("-", false, false);
+  const auto size = stem.fromFirstOccurrenceOf("-", false, false);
+  return (ext == "nam" || ext == "wav") && hash.isNotEmpty() && hash.containsOnly("0123456789abcdef") &&
+         size.isNotEmpty() && size.containsOnly("0123456789");
 }
 
 void TONE3000Processor::refreshLocalStashCopy(const juce::String& modelUrl,
@@ -768,9 +801,10 @@ std::vector<uint8_t> TONE3000Processor::fetchModelFromUrl(const juce::String& mo
                                modelUrl);
       return {};
     }
-    // In use, so keep the GC away (mtime is its liveness signal, see
-    // cleanLocalModelStash).
-    stash.setLastModificationTime(juce::Time::getCurrentTime());
+    // A stash copy in use: keep the GC away (mtime is its liveness signal,
+    // see cleanLocalModelStash). A file played in place keeps its dates.
+    if (stash.isAChildOf(localModelsDir()))
+      stash.setLastModificationTime(juce::Time::getCurrentTime());
     const auto* bytes = static_cast<const uint8_t*>(data.getData());
     return std::vector<uint8_t>(bytes, bytes + data.getSize());
   }

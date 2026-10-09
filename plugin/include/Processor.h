@@ -160,6 +160,10 @@ public:
   // desktop case (the root never moves there). Empty File for a non-file URL.
   static juce::File resolveLocalModelFile(const juce::File& stashRoot,
                                           const juce::String& modelUrl);
+  // Whether a file name is a stash copy's (<hex hash>-<size>.nam|.wav): only
+  // those are re-rooted by name (a file played in place that has gone is
+  // returned as is).
+  static bool isStashFileName(const juce::String& name);
   // The file name a URL names, percent-decoded. juce::URL::getFileName returns
   // the raw, still-escaped last path component, so a file picked as
   // "Deluxe Reverb 2.nam" reads back as "Deluxe%20Reverb%202.nam" and would
