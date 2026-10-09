@@ -888,6 +888,47 @@ juce::String TONE3000Processor::localModelProblem(const juce::String& filename, 
   return localBytesProblem(filename, data, size, gear);
 }
 
+namespace {
+// Library moves and renames this process made (noteLocalFilesMoved), oldest
+// first. Bounded: a session renaming more than this is unusual, and the
+// oldest moves are the least likely to be needed.
+struct LocalMove {
+  juce::File from, to;
+};
+juce::CriticalSection& localMovesLock() {
+  static juce::CriticalSection lock;
+  return lock;
+}
+std::vector<LocalMove>& localMoves() {
+  static std::vector<LocalMove> moves;
+  return moves;
+}
+constexpr size_t kMaxLocalMoves = 500;
+
+// `file` where the moves since took it: each move in order, so a folder
+// renamed and then moved again is followed through both.
+juce::File followLocalMoves(juce::File file) {
+  const juce::ScopedLock lock(localMovesLock());
+  for (const auto& move : localMoves()) {
+    if (file == move.from)
+      file = move.to;
+    else if (file.isAChildOf(move.from))
+      file = move.to.getChildFile(file.getRelativePathFrom(move.from));
+  }
+  return file;
+}
+}  // namespace
+
+void TONE3000Processor::noteLocalFilesMoved(const juce::File& from, const juce::File& to) {
+  if (from == juce::File() || to == juce::File() || from == to)
+    return;
+  const juce::ScopedLock lock(localMovesLock());
+  auto& moves = localMoves();
+  if (moves.size() >= kMaxLocalMoves)
+    moves.erase(moves.begin());
+  moves.push_back({from, to});
+}
+
 juce::File TONE3000Processor::resolveLocalModelFile(const juce::File& stashRoot,
                                                     const juce::String& modelUrl) {
   const juce::URL url(modelUrl);
@@ -897,6 +938,11 @@ juce::File TONE3000Processor::resolveLocalModelFile(const juce::File& stashRoot,
   const juce::File stored = url.getLocalFile();
   if (stored.existsAsFile())
     return stored;
+
+  // Renamed or moved in the Library since (a folder of captures, a whole
+  // library renamed): found where that took it.
+  if (const juce::File moved = followLocalMoves(stored); moved != stored && moved.existsAsFile())
+    return moved;
 
   // The stored path is gone. On iOS that is the normal case after a
   // reinstall or an app update: the data container's UUID rotates, so every

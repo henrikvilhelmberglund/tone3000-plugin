@@ -77,8 +77,14 @@ the user's collection isn't duplicated into app data (a folder of 300
 captures, or a linked collection in the Library, used to leave a copy of
 every file it played). Its dates are never touched. Presets and DAW state
 embed the model bytes as always, so a project still reopens when the file
-has moved; a cache-lost reload of a file that has gone (undo after a remove,
-retry) reports it missing, like any missing file.
+has moved. A rename or move made in the Library takes the blocks along: a
+block playing a file from under it is re-pointed (its `model_url`,
+`source_path` and a picture under it, `relinkLocalFiles`), and the move is
+remembered for the process, so a cache-lost reload of the old path (undo
+after a remove, retry) finds the file where it went
+(`noteLocalFilesMoved`, followed by `resolveLocalModelFile`). A file that
+has gone otherwise (moved outside the plugin, deleted) is reported missing,
+like any missing file.
 
 `<app-data>/TONE3000/LocalModels/<content-hash>-<size>.<ext>` holds the rest:
 the local equivalent of "the server", the copy that cache-lost reloads

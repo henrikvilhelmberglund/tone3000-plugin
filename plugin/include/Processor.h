@@ -177,6 +177,11 @@ public:
   // parse and be A2, a .wav must open as audio. Every local load checks it;
   // the Library's downloads too, before anything is written.
   static juce::String localModelProblem(const juce::String& filename, const void* data, size_t size);
+  // A Library rename or move took `from` (a file or a folder) to `to`:
+  // remembered for the process (any instance), so a later load of a path
+  // under `from` (an undo bringing a removed block back, a retry, a model
+  // switch) finds the file at its new place (resolveLocalModelFile).
+  static void noteLocalFilesMoved(const juce::File& from, const juce::File& to);
   static juce::File resolveLocalModelFile(const juce::File& stashRoot,
                                           const juce::String& modelUrl);
   // Whether a file name is a stash copy's (<hex hash>-<size>.nam|.wav): only
@@ -986,6 +991,11 @@ private:
   // edit) lived there, with the id its new place gives it. An invalid `to`
   // means it is gone: the active preset is cleared, the chain kept.
   void relinkActivePreset(const juce::File& activeFile, const juce::File& from, const juce::File& to);
+  // The same move for the blocks: local blocks playing files from under
+  // `from` point at them under `to` (their model URLs and source paths, so
+  // the UI and the saved state name the file where it is), and the move is
+  // noted for later loads (noteLocalFilesMoved).
+  void relinkLocalFiles(const juce::File& from, const juce::File& to);
   // Host program names/numbers follow the user folder's list; refresh them
   // when an edit touched it.
   void libraryTouched(std::initializer_list<juce::File> files);

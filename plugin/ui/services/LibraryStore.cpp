@@ -1966,8 +1966,11 @@ juce::String movedTo(const juce::String& path, const juce::String& from, const j
 
 void LibraryStore::remapPaths(const juce::String& from, const juce::String& to) {
   remapKept(from, to);
-  // Pictures and the artwork cache are keyed by the lower-cased path.
+  // Pictures and the artwork cache are keyed by the lower-cased path. A
+  // picture's file moves too when it lives under the path (its library's
+  // .t3kpictures, a library renamed).
   const auto lowFrom = from.toLowerCase(), lowTo = to.toLowerCase();
+  juce::StringArray picturesMoved;  // folders (keys) whose picture file moved
   for (const char* pref : {kPicturesPref, ToneArt::kCachePref}) {
     const auto all = prefs_.getJson(pref);
     auto* old = all.getDynamicObject();
@@ -1977,10 +1980,40 @@ void LibraryStore::remapPaths(const juce::String& from, const juce::String& to) 
     for (const auto& entry : old->getProperties()) {
       const auto key = entry.name.toString();
       const auto next = movedTo(key, lowFrom, lowTo);
-      changed = changed || next != key;
-      moved->setProperty(juce::Identifier(next), entry.value);
+      juce::var value = entry.value;
+      if (std::string_view(pref) == kPicturesPref)
+        if (const auto file = value.toString(); atOrUnder(file.toLowerCase(), lowFrom)) {
+          value = to + file.substring(from.length());
+          picturesMoved.add(next);
+        }
+      changed = changed || next != key || value != entry.value;
+      moved->setProperty(juce::Identifier(next), value);
     }
     if (changed) prefs_.setJson(pref, juce::var(moved.get()));
+  }
+  // A block wearing one of those pictures still points at its old file:
+  // dressed again from where things are now. What it plays is looked up
+  // through the move too (its file may have moved with it).
+  std::vector<std::pair<std::string, juce::File>> redress;
+  if (!picturesMoved.isEmpty())
+    for (const auto* block : chain_.state().toneBlocks()) {
+      const auto playing = block->tone.local ? playingSource(block->blockId) : juce::String();
+      if (playing.isEmpty()) continue;
+      const auto now = atOrUnder(playing.toLowerCase(), lowFrom) ? to + playing.substring(from.length()) : playing;
+      const auto original = originalOf(now);
+      const juce::File source = original != juce::File() ? original : juce::File(now);
+      const auto low = source.getFullPathName().toLowerCase();
+      for (const auto& folder : picturesMoved)
+        if (atOrUnder(low, folder)) {
+          redress.emplace_back(block->blockId, source);
+          break;
+        }
+    }
+  for (const auto& [id, source] : redress) {
+    auto* clear = new juce::DynamicObject();
+    clear->setProperty("clear", true);
+    chain_.setLocalToneArt(id, juce::var(clear));
+    artFor(source, id);
   }
   // The library order (a renamed library keeps its place).
   if (const auto order = prefs_.getJson(kOrderPref); const auto* paths = order.getArray()) {
