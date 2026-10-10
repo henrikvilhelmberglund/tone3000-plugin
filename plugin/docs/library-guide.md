@@ -40,7 +40,9 @@ takes drops.
   that is.
 - A kept copy stays linked to where it came from. On the card, **SOURCE**
   loads the original's folder again, starting on it. On the original,
-  **KEPT** goes to your copy.
+  **KEPT** goes to your copy. For a copy kept from a TONE3000 tone, SOURCE
+  uses your own download of that tone when you have one, so there's no
+  waiting for TONE3000.
 - **REFRESH** shows above them when the block's folder has captures the
   block doesn't list yet (you kept or copied more in since it loaded).
   Press it to add them; the block stays on the capture it plays.

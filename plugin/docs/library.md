@@ -330,7 +330,12 @@ so reopening the editor or the project shows it where you left it.
   dressed as the tone (its title, artwork, creator) with the tone's card
   (info, share, stats, KEEP's menu acting for the tone), and SOURCE (or the
   row's Load Source) loads the tone again with all its captures, on that
-  one; the tone's card offers KEPT. The arrow beside KEEP (TONE3000 tones
+  one; the tone's card offers KEPT. When you have the tone as files of
+  your own, SOURCE loads those instead of TONE3000 (no download, and
+  stepping the folder has no lag): a file linked to the same tone and model
+  (Download All Captures, an earlier KEEP), the folder holding the most of
+  that tone first; else a file with the copy's bytes in a folder the
+  artwork lookup matched to the tone (one downloaded from the website). The arrow beside KEEP (TONE3000 tones
   only) has the three ways: **Keep Capture** (as KEEP), **Keep as Reference**
   (its `.t3ktone`: one item holding all its captures, played from
   TONE3000; drawn yellow with a link mark, apart from your files in white

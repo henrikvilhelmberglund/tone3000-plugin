@@ -1600,6 +1600,41 @@ struct LibraryFeatureTests : juce::UnitTest {
       }
     }
 
+    beginTest("SOURCE of a copy kept from a TONE3000 tone prefers your own download of that tone");
+    {
+      const auto make = [&](const juce::String& rel) {
+        const auto f = root.getChildFile(rel);
+        f.getParentDirectory().createDirectory();
+        f.replaceWithText("{}");
+        return f;
+      };
+      const auto copy = make("Keepers/Boost.nam");
+      const auto download = make("Downloads/Boost Tone/Boost - High.nam");
+      make("Downloads/Boost Tone/Boost - Low.nam");
+      const auto single = make("Elsewhere/Boost - High.nam");
+      const auto link = [](int model) {
+        auto* tone = new juce::DynamicObject();
+        tone->setProperty("id", 4242);
+        tone->setProperty("title", "Boost Tone");
+        auto* m = new juce::DynamicObject();
+        m->setProperty("id", model);
+        auto* o = new juce::DynamicObject();
+        o->setProperty("tone", juce::var(tone));
+        o->setProperty("model", juce::var(m));
+        return juce::var(o);
+      };
+      const auto before = prefs.getJson(LibraryStore::kKeptPref);
+      auto* index = new juce::DynamicObject();
+      index->setProperty(juce::Identifier(copy.getFullPathName()), link(9));
+      index->setProperty(juce::Identifier(download.getFullPathName()), link(9));
+      index->setProperty(juce::Identifier(root.getChildFile("Downloads/Boost Tone/Boost - Low.nam").getFullPathName()), link(10));
+      index->setProperty(juce::Identifier(single.getFullPathName()), link(9));
+      prefs.setJson(LibraryStore::kKeptPref, juce::var(index));
+      expect(library.localSiteOriginal(copy.getFullPathName()) == download,
+             "the whole download, not the single copy: " + library.localSiteOriginal(copy.getFullPathName()).getFullPathName());
+      prefs.setJson(LibraryStore::kKeptPref, before);
+    }
+
     beginTest("Down in the search goes to the first capture shown, the keyboard with it");
     {
       library.select({});

@@ -1727,7 +1727,54 @@ bool LibraryStore::hasOriginal(const std::string& blockId) {
 }
 
 void LibraryStore::useSiteOriginal(const juce::String& path) {
-  if (const auto ref = siteOriginalOf(path)) loadToneRef(*ref, auditionTarget());
+  const auto ref = siteOriginalOf(path);
+  if (!ref) return;
+  if (const auto local = localSiteOriginal(path); local != juce::File()) return loadCapture(local, auditionTarget());
+  loadToneRef(*ref, auditionTarget());
+}
+
+juce::File LibraryStore::localSiteOriginal(const juce::String& path) const {
+  const auto index = prefs_.getJson(kKeptPref);  // held: the properties live in it
+  const auto link = index.getProperty(juce::Identifier(path), {});
+  const int toneId = link["tone"]["id"], modelId = link["model"]["id"];
+  if (toneId <= 0) return {};
+  const auto hash = link["hash"].toString();
+  // Every file of yours linked to that tone, by folder (to tell a whole
+  // download from a single copy kept somewhere).
+  std::map<juce::String, int> ofTone;
+  std::vector<juce::File> sameModel;
+  if (const auto* links = index.getDynamicObject())
+    for (const auto& other : links->getProperties()) {
+      if (other.name.toString() == path || static_cast<int>(other.value["tone"]["id"]) != toneId) continue;
+      const juce::File file(other.name.toString());
+      if (!file.existsAsFile()) continue;
+      ++ofTone[file.getParentDirectory().getFullPathName()];
+      const bool model = modelId > 0 && static_cast<int>(other.value["model"]["id"]) == modelId;
+      if (model || (hash.isNotEmpty() && other.value["hash"].toString() == hash)) sameModel.push_back(file);
+    }
+  juce::File best;
+  int most = 0;
+  for (const auto& file : sameModel)
+    if (const int n = ofTone[file.getParentDirectory().getFullPathName()]; n > most) {
+      best = file;
+      most = n;
+    }
+  if (best != juce::File() || hash.isEmpty()) return best;
+  // Not linked (downloaded from the website into a linked folder): a folder
+  // the artwork lookup matched to that tone, its file with those bytes (the
+  // size first, so only a candidate is read).
+  const auto size = hash.fromLastOccurrenceOf(":", false, false).getLargeIntValue();
+  if (const auto art = prefs_.getJson(ToneArt::kCachePref); const auto* folders = art.getDynamicObject())
+    for (const auto& entry : folders->getProperties()) {
+      if (static_cast<int>(entry.value.getProperty("id", 0)) != toneId) continue;
+      const juce::File folder(entry.name.toString());
+      for (const auto& file : folder.findChildFiles(juce::File::findFiles, false, "*.nam;*.wav")) {
+        if (file.getFullPathName() == path || file.getSize() != size) continue;
+        juce::MemoryBlock bytes;
+        if (file.loadFileAsData(bytes) && library_state::contentHash(bytes) == hash) return file;
+      }
+    }
+  return {};
 }
 
 juce::File LibraryStore::knownOriginalOf(const juce::String& path) {
@@ -2242,7 +2289,11 @@ juce::String LibraryStore::pictureFolderFor(const std::string& blockId) {
 }
 
 void LibraryStore::openOriginal(const std::string& blockId) {
-  if (const auto site = siteOriginalOf(playingSource(blockId))) return loadToneRef(*site, blockId);
+  if (const auto site = siteOriginalOf(playingSource(blockId))) {
+    if (const auto local = localSiteOriginal(playingSource(blockId)); local != juce::File())
+      return loadCapture(local, blockId);
+    return loadToneRef(*site, blockId);
+  }
   const auto original = keptFrom(blockId);
   if (original == juce::File()) return (void)fail("The original is missing");
   loadCapture(original, blockId);

@@ -362,8 +362,16 @@ public:
   int newInFolder(const std::string& blockId);
   // The block's folder loaded into it again, on the capture it plays.
   void refreshBlock(const std::string& blockId);
-  // A Library row's TONE3000 original, loaded the way a pick is.
+  // A Library row's TONE3000 original, loaded the way a pick is (from your
+  // own copy of it when you have one: localSiteOriginal).
   void useSiteOriginal(const juce::String& capturePath);
+  // A capture kept from a TONE3000 tone: the same model of that tone as a
+  // file of yours elsewhere (Download All Captures, or a copy kept before),
+  // by its link to the tone and model, else by the same bytes; of several,
+  // the one whose folder holds the most of that tone. Invalid with none.
+  // What SOURCE loads before going to TONE3000: no download, and the folder
+  // steps without lag.
+  juce::File localSiteOriginal(const juce::String& capturePath) const;
   // Swap the block to the original's folder / a kept copy's folder, starting
   // on that capture.
   void openOriginal(const std::string& blockId);
