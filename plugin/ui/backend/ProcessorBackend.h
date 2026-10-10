@@ -36,6 +36,9 @@ public:
                               const std::string& targetInsertId) override;
   bool swapTone(const std::string& blockId, const juce::String& toneJson) override;
   bool refreshToneMetadata(const juce::String& toneJson) override;
+  void relinkLocalFiles(const juce::File& from, const juce::File& to) override {
+    processor_.relinkLocalFiles(from, to);
+  }
   bool setLocalToneArt(const std::string& blockId, const juce::var& art) override {
     return processor_.setLocalToneArt(blockId, art);
   }
