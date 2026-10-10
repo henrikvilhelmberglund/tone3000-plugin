@@ -252,6 +252,7 @@ public:
     image.multiplyAllAlphas(0.6f);
     const auto offset = -e.getMouseDownPosition();
     container->startDragging(juce::var(desc.get()), &drawer_, juce::ScaledImage(image, kScale), false, &offset);
+    drawer_.startDragScroll();
   }
 
   void mouseUp(const juce::MouseEvent& e) override {
@@ -1343,6 +1344,29 @@ LibraryDrawer::Row* LibraryDrawer::rowAt(juce::Point<int> p) {
   if (inContent.y < kRowTop) return nullptr;
   const auto it = rows_.find((inContent.y - kRowTop) / kRowHeight);
   return it != rows_.end() ? it->second.get() : nullptr;
+}
+
+void LibraryDrawer::startDragScroll() {
+  dragScroll_.tick = [this] { dragScrollTick(); };
+  dragScroll_.startTimerHz(60);
+}
+
+void LibraryDrawer::dragScrollTick() {
+  auto* container = juce::DragAndDropContainer::findParentDragContainerFor(this);
+  if (container == nullptr || !container->isDragAndDropActive()) return dragScroll_.stopTimer();
+  // Within the drawer's width, from a band inside the list's edge to past
+  // it (a drag that overshoots the bottom keeps going).
+  constexpr int kEdge = 36, kMaxStep = 24;
+  const auto p = scroller_.getLocalPoint(nullptr, juce::Desktop::getMousePosition());
+  if (p.x < 0 || p.x >= getWidth()) return;
+  const int h = scroller_.getHeight();
+  int step = 0;
+  if (p.y < kEdge) step = -juce::jmin(kMaxStep, (kEdge - p.y) / 2 + 1);
+  else if (p.y > h - kEdge) step = juce::jmin(kMaxStep, (p.y - (h - kEdge)) / 2 + 1);
+  if (step == 0) return;
+  const int maxY = juce::jmax(0, content_.getHeight() - scroller_.getViewHeight());
+  const int y = juce::jlimit(0, maxY, scroller_.getViewPositionY() + step);
+  if (y != scroller_.getViewPositionY()) scroller_.setViewPosition(scroller_.getViewPositionX(), y);
 }
 
 void LibraryDrawer::setDropHighlight(const juce::String& path) {

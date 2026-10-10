@@ -64,6 +64,8 @@ takes drops.
   from it. PNG, JPEG, GIF and WebP all work.
 - Libraries can be reordered (drag one onto another, or **Move Up / Move
   Down**).
+- **Dragging near the top or bottom of the list scrolls it**, so you can
+  drag a folder a long way.
 
 ### Pictures from TONE3000
 

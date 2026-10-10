@@ -127,6 +127,14 @@ private:
   std::unique_ptr<ContextMenu> menu_;
   std::unique_ptr<Prompt> prompt_;
   juce::String dropHighlight_;
+  // While a row is dragged: near the list's top or bottom edge the list
+  // scrolls, faster the closer to the edge (JUCE's drags don't).
+  struct DragScroll : juce::Timer {
+    std::function<void()> tick;
+    void timerCallback() override { tick(); }
+  } dragScroll_;
+  void startDragScroll();
+  void dragScrollTick();
   juce::String activePresetId_;
   // What the chain plays: local blocks' files, TONE3000 blocks' tone ids
   // (the rows that show it get the active dot), and the audition block's
