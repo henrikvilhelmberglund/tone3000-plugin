@@ -59,6 +59,8 @@ public:
   virtual bool refreshToneMetadata(const juce::String& toneJson) = 0;
   // A local block's matched TONE3000 artwork: { image, username, avatar_url, url }.
   virtual bool setLocalToneArt(const std::string& blockId, const juce::var& art) = 0;
+  // Local blocks playing files from under `from` play them under `to` now.
+  virtual void relinkLocalFiles(const juce::File& from, const juce::File& to) = 0;
   virtual bool switchModel(const std::string& blockId, int modelId, const juce::var& model) = 0;
   virtual bool retryModelLoad(const std::string& blockId) = 0;
   virtual bool removeChainBlock(const std::string& blockId) = 0;

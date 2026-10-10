@@ -83,8 +83,13 @@ block playing a file from under it is re-pointed (its `model_url`,
 remembered for the process, so a cache-lost reload of the old path (undo
 after a remove, retry) finds the file where it went
 (`noteLocalFilesMoved`, followed by `resolveLocalModelFile`). A file that
-has gone otherwise (moved outside the plugin, deleted) is reported missing,
-like any missing file.
+has gone otherwise (moved outside the plugin, a project saved before a
+rename) is looked for in the Library by its name, and a file found there
+counts only when its bytes give the model's id (`localModelId`, the hash
+every local model's id comes from); the block is re-pointed to it
+(`LibraryStore::findMovedFiles`). Anything not found that way (deleted, or
+outside the Library and its linked folders) is reported missing, like any
+missing file.
 
 `<app-data>/TONE3000/LocalModels/<content-hash>-<size>.<ext>` holds the rest:
 the local equivalent of "the server", the copy that cache-lost reloads

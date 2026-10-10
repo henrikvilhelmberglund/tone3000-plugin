@@ -1009,6 +1009,16 @@ TEST(LibraryProcessorTest, BlocksFollowTheirFilesThroughRenamesAndMoves) {
     return {};
   };
   const auto oldUrl = juce::URL(capture).toString(false);
+  // The id a model gets from its bytes is the Library's, which finds a
+  // moved file by it (LibraryStore::findMovedFiles).
+  {
+    juce::MemoryBlock bytes;
+    ASSERT_TRUE(capture.loadFileAsData(bytes));
+    EXPECT_EQ(static_cast<int>(playing()["id"]), t3k::library_state::localModelId(bytes.getData(), bytes.getSize()));
+    // The value itself, as every build has made it (sessions and presets
+    // store these ids): the same file, the same id, whatever changes here.
+    EXPECT_EQ(static_cast<int>(playing()["id"]), 2130798715);
+  }
   // Wearing a folder picture from the same folder (as from a library's
   // .t3kpictures): it moves along.
   const juce::File picture = amps.getChildFile("cover.png");

@@ -1513,6 +1513,77 @@ struct LibraryFeatureTests : juce::UnitTest {
     drive::fill(pluginRoot, "Search library", "");
     pump(250);
 
+    beginTest("a block whose file moved away is found by its name and bytes, and re-pointed");
+    {
+      juce::MemoryBlock bytes;
+      expect(plexi.loadFileAsData(bytes));
+      const int id = library_state::localModelId(bytes.getData(), bytes.getSize());
+      // The block names Plexi where it was (a project saved before its folder
+      // was renamed): the Library has it in Amps, with the same bytes.
+      const auto playsFrom = [&](const juce::File& file, int modelId, int revision) {
+        auto moved = juce::JSON::parse(juce::JSON::toString(chain));
+        moved.getDynamicObject()->setProperty("revision", revision);
+        if (auto* lane = moved["chain"].getArray())
+          for (auto& item : *lane)
+            if (item["blockId"].toString().toStdString() == blockId) {
+              // An older project's block: its file only in the model URL.
+              auto model = item["tone"]["models"][0];
+              model.getDynamicObject()->setProperty("id", modelId);
+              model.getDynamicObject()->removeProperty("source_path");
+              model.getDynamicObject()->setProperty("model_url", juce::URL(file).toString(false));
+              item.getDynamicObject()->setProperty("activeModelId", modelId);
+            }
+        backend.setChain(moved);
+        pump(200);
+      };
+      const auto gone = root.getChildFile("Old Amps").getChildFile("Plexi.nam");
+      const auto before = backend.relinks().size();
+      playsFrom(gone, id, 770);
+      expectEquals(static_cast<int>(backend.relinks().size()), static_cast<int>(before) + 1, "re-pointed once");
+      if (backend.relinks().size() > before) {
+        // Its whole folder is gone: the folder, re-pointed to where it went.
+        expect(backend.relinks().back().first == gone.getParentDirectory(), backend.relinks().back().first.getFullPathName());
+        expect(backend.relinks().back().second == amps, backend.relinks().back().second.getFullPathName());
+      }
+      // A file of that name with other bytes isn't it.
+      playsFrom(root.getChildFile("Older Amps").getChildFile("Plexi.nam"), id + 1, 771);
+      expectEquals(static_cast<int>(backend.relinks().size()), static_cast<int>(before) + 1, "not another capture with its name");
+
+      // The same bytes in two places (Savage is in the linked collection and
+      // kept in Amps): the folder holding all the block's missing files wins.
+      {
+        juce::MemoryBlock savageBytes;
+        expect(savageCopy.loadFileAsData(savageBytes));
+        const int savageId = library_state::localModelId(savageBytes.getData(), savageBytes.getSize());
+        const auto mix = root.getChildFile("Old Mix");
+        auto two = juce::JSON::parse(juce::JSON::toString(chain));
+        two.getDynamicObject()->setProperty("revision", 773);
+        if (auto* lane = two["chain"].getArray())
+          for (auto& item : *lane)
+            if (item["blockId"].toString().toStdString() == blockId) {
+              juce::Array<juce::var> models;
+              for (const auto& [name, modelId] : {std::pair<const char*, int>{"Savage.nam", savageId}, {"Plexi.nam", id}}) {
+                auto* m = new juce::DynamicObject();
+                m->setProperty("id", modelId);
+                m->setProperty("name", juce::File(name).getFileNameWithoutExtension());
+                m->setProperty("source_path", mix.getChildFile(name).getFullPathName());
+                m->setProperty("model_url", juce::URL(mix.getChildFile(name)).toString(false));
+                models.add(juce::var(m));
+              }
+              item["tone"].getDynamicObject()->setProperty("models", models);
+              item.getDynamicObject()->setProperty("activeModelId", savageId);
+            }
+        backend.setChain(two);
+        pump(200);
+        expect(!backend.relinks().empty() && backend.relinks().back().first == mix &&
+                   backend.relinks().back().second == amps,
+               "to Amps, which holds both: " + (backend.relinks().empty() ? juce::String() : backend.relinks().back().second.getFullPathName()));
+      }
+      chain.getDynamicObject()->setProperty("revision", 772);
+      backend.setChain(chain);  // back to Plexi alone
+      pump(200);
+    }
+
     beginTest("Down in the search goes to the first capture shown, the keyboard with it");
     {
       library.select({});

@@ -529,7 +529,9 @@ void LibraryStore::apply(std::shared_ptr<LibraryTree> tree) {
   // Same-bytes matches are per tree; cards and titles look again.
   same_.clear();
   stashSources_.clear();
+  movedChecked_.clear();
   keepListeners_.call([](KeepListener& l) { l.keepChanged(); });
+  findMovedFiles();
   syncShown();
 }
 
@@ -1781,7 +1783,99 @@ void LibraryStore::chainChanged(const ChainState& state) {
   // The block waiting for a folder is gone (removed, undone away): nothing
   // to add any more.
   if (pendingAdd_ && state.findBlock(*pendingAdd_) == nullptr) cancelAdd();
+  findMovedFiles();
   syncShown();
+}
+
+void LibraryStore::findMovedFiles() {
+  // The file a model plays: its source path, else (a block from an older
+  // project, which recorded none) its model URL's file.
+  const auto fileOf = [](const ToneModelRef& m) -> juce::String {
+    if (juce::File::isAbsolutePath(m.sourcePath)) return m.sourcePath;
+    if (const juce::URL url(m.modelUrl); url.isLocalFile()) return url.getLocalFile().getFullPathName();
+    return {};
+  };
+  if (!loaded_) {
+    // Nothing listed yet (the drawer not opened this session): a block with
+    // a missing file starts the listing (the saved one is quick), and the
+    // search runs when it lands (apply).
+    if (scanGeneration_ == 0)
+      for (const auto* block : chain_.state().toneBlocks())
+        if (block->tone.local)
+          for (const auto& m : block->tone.models)
+            if (const auto path = fileOf(m); path.isNotEmpty() && !juce::File(path).existsAsFile()) {
+              juce::Logger::writeToLog("[Library] A block's file isn't at its path (" + path +
+                                       "): listing the Library to look for it");
+              return refresh();
+            }
+    return;
+  }
+  // The missing files of each block, by the folder they were in.
+  struct Missing {
+    juce::File file;
+    int id;
+  };
+  std::map<juce::String, std::vector<Missing>> byFolder;
+  for (const auto* block : chain_.state().toneBlocks()) {
+    if (!block->tone.local) continue;
+    for (const auto& m : block->tone.models) {
+      const auto path = fileOf(m);
+      if (path.isEmpty() || !movedChecked_.insert(path).second) continue;
+      const juce::File file(path);
+      if (file.existsAsFile()) continue;
+      auto drive = file;
+      while (drive.getParentDirectory() != drive) drive = drive.getParentDirectory();
+      if (!drive.exists()) continue;  // on a drive that isn't plugged in: not moved, just away
+      byFolder[file.getParentDirectory().getFullPathName()].push_back({file, m.id});
+    }
+  }
+  const auto bytesGive = [](const juce::File& file, int id) {
+    juce::MemoryBlock bytes;
+    const int got = file.loadFileAsData(bytes) ? library_state::localModelId(bytes.getData(), bytes.getSize()) : 0;
+    if (got != id)
+      juce::Logger::writeToLog("[Library]   not it (other bytes): " + file.getFullPathName());
+    return got == id;
+  };
+  for (const auto& [folderPath, files] : byFolder) {
+    juce::Logger::writeToLog("[Library] " + juce::String(static_cast<int>(files.size())) +
+                             " file(s) a block plays aren't at their paths in " + folderPath + ": looking for them");
+    // One file found by its name and bytes says where the folder went. The
+    // same bytes can be in several places (a kept copy and its original):
+    // the folder holding the most of the missing files is the one.
+    const auto holds = [&files](const juce::File& folder) {
+      int n = 0;
+      for (const auto& missing : files) n += folder.getChildFile(missing.file.getFileName()).existsAsFile() ? 1 : 0;
+      return n;
+    };
+    juce::File found;
+    int best = 0;
+    for (const auto& missing : files) {
+      for (const auto* node : tree_->capturesNamed(missing.file.getFileName()))
+        if (const int n = holds(node->file().getParentDirectory()); n > best && bytesGive(node->file(), missing.id)) {
+          found = node->file();
+          best = n;
+        }
+      if (found != juce::File()) break;
+    }
+    if (found == juce::File()) {
+      juce::Logger::writeToLog("[Library]   none found in the Library by name and bytes");
+      continue;
+    }
+    const juce::File from(folderPath), to = found.getParentDirectory();
+    juce::Logger::writeToLog("[Library]   found in " + to.getFullPathName());
+    // The others by their names there.
+    bool all = true;
+    for (const auto& missing : files) all = all && to.getChildFile(missing.file.getFileName()).existsAsFile();
+    // The whole folder went (renamed, moved): one relink for it. Else each
+    // file on its own (the folder is still there, or some went elsewhere).
+    if (all && !from.exists()) {
+      backend_.relinkLocalFiles(from, to);
+      continue;
+    }
+    for (const auto& missing : files)
+      if (const auto there = to.getChildFile(missing.file.getFileName()); there.existsAsFile())
+        backend_.relinkLocalFiles(missing.file, there);
+  }
 }
 
 void LibraryStore::syncShown() {

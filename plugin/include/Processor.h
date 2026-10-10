@@ -217,6 +217,13 @@ public:
       artwork first (a block playing a kept copy shows the original's folder). Saved with presets and state like any
       tone field. False for an unknown or non-local block, or no change. */
   bool setLocalToneArt(const std::string& blockId, const juce::var& art);
+  // A Library rename or move (or a file found where it went, see
+  // LibraryStore::findMovedFiles) took `from` (a file or a folder) to `to`:
+  // local blocks playing files from under it point at them under `to`
+  // (their model URLs, source paths and a picture there, so the UI and the
+  // saved state name the file where it is), and the move is noted for later
+  // loads (noteLocalFilesMoved).
+  void relinkLocalFiles(const juce::File& from, const juce::File& to);
   // Switch the block's active model. Native only stores the active model, so
   // `modelData` (JSON object with id/name/model_url, paged in from the API by
   // the UI) is required and becomes the tone's new sole stored model.
@@ -991,11 +998,6 @@ private:
   // edit) lived there, with the id its new place gives it. An invalid `to`
   // means it is gone: the active preset is cleared, the chain kept.
   void relinkActivePreset(const juce::File& activeFile, const juce::File& from, const juce::File& to);
-  // The same move for the blocks: local blocks playing files from under
-  // `from` point at them under `to` (their model URLs and source paths, so
-  // the UI and the saved state name the file where it is), and the move is
-  // noted for later loads (noteLocalFilesMoved).
-  void relinkLocalFiles(const juce::File& from, const juce::File& to);
   // Host program names/numbers follow the user folder's list; refresh them
   // when an edit touched it.
   void libraryTouched(std::initializer_list<juce::File> files);

@@ -49,6 +49,9 @@ public:
   juce::var loadLocalToneUrls(const juce::Array<juce::URL>&, const std::string&) override;
   bool swapTone(const std::string&, const juce::String&) override { return true; }
   bool refreshToneMetadata(const juce::String&) override { return true; }
+  void relinkLocalFiles(const juce::File& from, const juce::File& to) override { relinks_.push_back({from, to}); }
+  // Every relinkLocalFiles call so far: from, to.
+  const std::vector<std::pair<juce::File, juce::File>>& relinks() const { return relinks_; }
   bool setLocalToneArt(const std::string& blockId, const juce::var& art) override {
     localToneArt_[blockId] = art;
     // What the block shows, merged as the processor merges: "clear" drops
@@ -292,6 +295,7 @@ private:
   bool artBumpsChain_ = false;
   juce::File lastLocalLoadFile_;
   std::pair<std::string, int> lastSwitch_;
+  std::vector<std::pair<juce::File, juce::File>> relinks_;
   std::map<std::string, juce::var> localToneLook_;
   juce::File recordEdit(const juce::String& op, const juce::File& result) {
     libraryEdits_.push_back({op, result});

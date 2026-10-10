@@ -1,4 +1,5 @@
 #include "Processor.h"
+#include "LibraryState.h"
 #include "NamArchitecture.h"
 #include "json.hpp"
 #include "NAM/wavenet/a2_fast.h"
@@ -281,7 +282,7 @@ juce::var stashLocalBytes(const juce::String& filename, juce::MemoryOutputStream
   // own block (cache key, activeModelId), so collisions across different
   // files would be harmless anyway.
   juce::DynamicObject::Ptr model = new juce::DynamicObject();
-  model->setProperty("id", static_cast<int>(hash % 0x7ffffffe) + 1);
+  model->setProperty("id", t3k::library_state::localModelId(decoded.getData(), decoded.getDataSize()));
   model->setProperty("name", filename.upToLastOccurrenceOf(".", false, false));
   model->setProperty("model_url", juce::URL(stash).toString(false));
   if (gear.isNotEmpty())

@@ -535,6 +535,13 @@ private:
   std::map<juce::String, juce::Array<juce::File>> same_;
   // The original of a stash copy the block plays without knowing its file.
   juce::File originalInLibrary(const juce::File& stash, const juce::String& name);
+  // Blocks playing files that aren't at their paths any more (a project
+  // saved before a folder was renamed, a rename in Explorer): each looked
+  // for in the Library by its name, a find counting only when its bytes give
+  // the block's model id, and the block re-pointed there
+  // (Backend::relinkLocalFiles). Once per missing path per listing.
+  void findMovedFiles();
+  std::set<juce::String> movedChecked_;
   // A confirmation (the quiet toast): fail() stays the loud one.
   void note(const juce::String& message);
   // The source_path of the capture `blockId` plays ("" for none).

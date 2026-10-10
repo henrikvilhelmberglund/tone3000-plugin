@@ -476,7 +476,15 @@ so reopening the editor or the project shows it where you left it.
   theirs the same way (`relinkLocalFiles`): a block playing a capture from a
   folder renamed or moved in the drawer (your library renamed included)
   names it where it went, its folder picture too, and an undo bringing a
-  removed block back finds the file there.
+  removed block back finds the file there. A block whose file isn't at its
+  path any more for another reason (a project saved before a rename, a
+  folder renamed in Explorer / Finder) is found again too: once the Library
+  is listed, each missing file is looked for by its name, a find counting
+  only when its bytes give the block's model id (`findMovedFiles`). The same
+  bytes in several places (a kept copy and its original) go to the folder
+  holding the most of the block's missing files; a folder gone as a whole
+  is re-pointed in one go (the rest found there by name). Files on a drive
+  that isn't plugged in are left alone.
 
 ## Sharing: `.t3klibrary`
 

@@ -80,6 +80,19 @@ inline juce::String contentHash(const void* data, size_t size) {
 }
 inline juce::String contentHash(const juce::MemoryBlock& block) { return contentHash(block.getData(), block.getSize()); }
 
+// The id a local model gets from its bytes (positive, content-stable; see
+// stashLocalBytes): what tells a file found by its name from another one
+// with that name. Its FNV-1a starts from the processor's own basis,
+// 1469598103934665603 (not FNV's standard 14695981039346656037, which
+// contentHash uses): every id ever saved in a session or preset was made
+// with it, so it must not change.
+inline int localModelId(const void* data, size_t size) {
+  juce::uint64 hash = 1469598103934665603ull;
+  const auto* bytes = static_cast<const juce::uint8*>(data);
+  for (size_t i = 0; i < size; ++i) hash = (hash ^ bytes[i]) * 1099511628211ull;
+  return static_cast<int>(hash % 0x7ffffffe) + 1;
+}
+
 inline juce::File fileOf(const juce::File& dir) { return dir.getChildFile(kFileName); }
 inline juce::File picturesOf(const juce::File& dir) { return dir.getChildFile(kPicturesFolder); }
 

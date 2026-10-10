@@ -12,8 +12,8 @@ main design decisions, lists the known gaps, and collects ideas for later.
 
 ## Size and shape
 
-The branch is thirteen commits on top of upstream v0.0.12 (`ab5e5ae`): the
-ten it was opened with, and three follow-ups (11 to 13). It touches 98 files
+The branch is fourteen commits on top of upstream v0.0.12 (`ab5e5ae`): the
+ten it was opened with, and four follow-ups (11 to 14). It touches 98 files
 with about 23,000 added lines. About 6,200 of those are screenshot
 fixtures (`scenarios.json`), about 4,100 are tests and test support, and
 about 1,300 are docs, which leaves about 11,000 lines of product code.
@@ -36,11 +36,12 @@ own. They go from small and independent to large:
 | 11 | Folder pictures follow a renamed library | bug fix | 3 |
 | 12 | Blocks follow their files through Library renames and moves | bug fix | 7 |
 | 13 | Docs: this page, for 11 and 12 | docs | 1 |
+| 14 | Blocks find their moved files by name and bytes | bug fix | 13 |
 
 Commits 1 to 5 stand alone and could be merged separately. Commit 6 is
 useful on its own for OS file drops, and the Library's drag and drop needs
-it. Commits 7 to 9 are the Library itself, and 11 and 12 fix what renaming
-a library showed (below).
+it. Commits 7 to 9 are the Library itself, and 11, 12 and 14 fix what
+renaming a library showed (below).
 
 ## Commit by commit
 
@@ -294,6 +295,37 @@ Following moves inside `resolveLocalModelFile` also covers undo snapshots,
 which keep their own copy of the old path, and other instances in the same
 host.
 
+### 14. Blocks find their moved files by name and bytes
+
+**What:** once the Library is listed, and whenever the chain changes,
+`LibraryStore::findMovedFiles` checks each local block's files. For one
+that isn't at its path, it looks in the Library and linked folders for a
+file of that name whose bytes give the block's model id, and re-points the
+block there through `relinkLocalFiles` (now public, and on the backend).
+- **One formula for the id:** a local model's id has always been a hash of
+  its bytes. It now lives in one place, `library_state::localModelId`, used
+  by the processor and the Library alike. It keeps the processor's own
+  FNV-1a starting value (`1469598103934665603`, not FNV's standard one),
+  since every saved session and preset holds ids made with it; a DSP test
+  pins the id of a test capture.
+- **The plugin log** says what the search does (`[Library]` lines): the
+  files it is looking for, candidates whose bytes don't match, and where it
+  found them.
+- **A whole folder gone:** once one file is confirmed in a new folder, the
+  rest are taken from there by name, and the folder is re-pointed in one go.
+  A 300-file pack isn't re-read.
+- **The same bytes in several places** (a kept copy and its original): the
+  folder holding the most of the block's missing files wins.
+- **Files on a drive that isn't plugged in** are left alone; they're away,
+  not moved. Each missing path is checked once per listing.
+
+**Why:** commit 12 only follows moves the drawer makes while the plugin is
+loaded. A project saved before a rename (here: a library renamed on sign-in
+by a build without commit 12) came back with dead paths. A capture never
+played had no stored bytes and showed "Download failed", and kept copies
+lost their names and pictures. Renames made in Explorer or Finder had the
+same effect.
+
 ## Things to look at closely
 
 - **Threads.** `Backend::getLibrary` (worker), `prepareLocalToneInFolder`
@@ -321,7 +353,8 @@ host.
 
 - **DSP tests (GoogleTest):**
   - `library_tests.cpp` (38): file layer, formats, archives, state, sharing,
-    processor glue, blocks following renames and moves;
+    processor glue, blocks following renames and moves (and the model id the
+    Library recomputes);
   - `local_load_tests.cpp` (+6): folder loads, in-place, error pages, sort;
   - `chain_slot_tests.cpp` (4): splicing beside a block;
   - `nam_architecture_tests.cpp` (2): the A1 folder-name rule.
@@ -354,16 +387,13 @@ with `DspTests --gtest_filter="Library*:LocalLoad*:ChainSlot*:NamArch*"`.
   when the editor closes.
 - **Set Folder...** points the Library at another folder. It doesn't offer
   to move the old one there.
-- **Renames and moves outside the plugin** (in Explorer or Finder) aren't
-  followed by blocks. Commit 12 only knows the moves the drawer made. A
-  block playing a file renamed elsewhere keeps its old path: it plays and
-  saves as before (the session stores the bytes), and the project reopens.
-  But undo after removing it, a retry, or switching to another capture of
-  its folder reports the file missing until the capture is loaded again
-  from the Library. Kept links and folder pictures can be reconnected with
-  **Missing Files**, which asks where the files went. The moves the drawer
-  made are also forgotten when the plugin unloads. That only matters for
-  undo, whose history goes with it.
+- **Files moved outside the Library** (out of the Library folder and every
+  linked folder, in Explorer or Finder) can't be found by commit 14, which
+  only looks there. A block playing one plays and saves as before (the
+  session stores the bytes), but a retry or switching to another capture of
+  its folder reports the file missing. Linking the folder it went to brings
+  it back. Kept links and folder pictures of files moved anywhere can be
+  reconnected with **Missing Files**, which asks where the files went.
 
 ## Ideas for later
 
