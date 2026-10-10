@@ -172,6 +172,14 @@ public:
     } else if (library.selected() == node_.path) {
       paint::fill(g, box, kRowRadius, theme::kHighlight);
     }
+    if (drawer_.dropLine_ == node_.path) {
+      // The insertion line on this row's top or bottom edge, from its indent.
+      const float lx = 8.0f + static_cast<float>(indentFor(depth_));
+      const float ly = drawer_.dropLineAfter_ ? static_cast<float>(getHeight()) - 1.5f : 1.5f;
+      g.setColour(kDropColour);
+      g.fillRoundedRectangle(lx, ly - 1.0f, static_cast<float>(getWidth()) - lx - 8.0f, 2.0f, 1.0f);
+      g.fillEllipse(lx - 3.0f, ly - 3.0f, 6.0f, 6.0f);
+    }
 
     int x = 8 + indentFor(depth_);
     const float cy = getHeight() / 2.0f;
@@ -276,10 +284,14 @@ public:
     });
   }
 
-  // Another row dropped here: into this folder (when it takes things), or
-  // a library onto a library (it moves to just above it).
+  // Another row dropped here: into this folder (when it takes things), a
+  // library onto a library (it moves to just above it), or a folder beside
+  // this one (its top or bottom edge: the folder order).
   bool isInterestedInDragSource(const SourceDetails& details) override {
     const auto dragged = details.description.getProperty(LibraryStore::kDragKey, {}).toString();
+    return drawer_.services_.library.canPlaceBeside(dragged, node_.path) || takesInto(dragged);
+  }
+  bool takesInto(const juce::String& dragged) const {
     const auto* item = drawer_.services_.library.tree().find(dragged);
     if (item != nullptr && item->kind == LibraryNode::Kind::library)
       return node_.kind == LibraryNode::Kind::library && node_.path != dragged;
@@ -293,11 +305,25 @@ public:
     if (dragged == node_.path || isWithin(node_.path, dragged)) return false;
     return item != nullptr && node_.accepts(*item);
   }
-  void itemDragEnter(const SourceDetails&) override { drawer_.setDropHighlight(node_.path); }
-  void itemDragExit(const SourceDetails&) override { drawer_.setDropHighlight({}); }
-  void itemDropped(const SourceDetails& details) override {
+  void itemDragEnter(const SourceDetails& details) override { drawer_.dragOver(*this, details); }
+  void itemDragMove(const SourceDetails& details) override { drawer_.dragOver(*this, details); }
+  void itemDragExit(const SourceDetails&) override {
     drawer_.setDropHighlight({});
+    drawer_.setDropLine({}, false);
+  }
+  bool isOpen() const { return open_; }
+  void itemDropped(const SourceDetails& details) override {
+    const bool beside = drawer_.dropLine_ == node_.path, after = drawer_.dropLineAfter_;
+    drawer_.setDropHighlight({});
+    drawer_.setDropLine({}, false);
     const auto dragged = details.description.getProperty(LibraryStore::kDragKey, {}).toString();
+    if (beside) {
+      juce::MessageManager::callAsync([safe = juce::Component::SafePointer<LibraryDrawer>(&drawer_), dragged,
+                                       sibling = node_.path, after] {
+        if (safe != nullptr) safe->services_.library.placeFolder(dragged, sibling, after);
+      });
+      return;
+    }
     juce::MessageManager::callAsync([safe = juce::Component::SafePointer<LibraryDrawer>(&drawer_), dragged, folder = node_.path] {
       if (safe == nullptr) return;
       auto& library = safe->services_.library;
@@ -1367,6 +1393,35 @@ void LibraryDrawer::dragScrollTick() {
   const int maxY = juce::jmax(0, content_.getHeight() - scroller_.getViewHeight());
   const int y = juce::jlimit(0, maxY, scroller_.getViewPositionY() + step);
   if (y != scroller_.getViewPositionY()) scroller_.setViewPosition(scroller_.getViewPositionX(), y);
+}
+
+void LibraryDrawer::setDropLine(const juce::String& path, bool after) {
+  if (dropLine_ == path && dropLineAfter_ == after) return;
+  const auto was = dropLine_;
+  dropLine_ = path;
+  dropLineAfter_ = after;
+  for (auto& [index, row] : rows_)
+    if (row->node().path == was || row->node().path == path) row->repaint();
+}
+
+void LibraryDrawer::dragOver(Row& row, const juce::DragAndDropTarget::SourceDetails& details) {
+  const auto dragged = details.description.getProperty(LibraryStore::kDragKey, {}).toString();
+  const auto& path = row.node().path;
+  const bool beside = services_.library.canPlaceBeside(dragged, path);
+  const bool into = row.takesInto(dragged);
+  // Top and bottom quarters: beside it (all of it when it takes nothing in).
+  // An open folder's bottom edge leads into it (its contents follow), so
+  // there it means into.
+  const int y = details.localPosition.y, h = row.getHeight();
+  const bool top = beside && (y < h / 4 || (!into && y < h / 2));
+  const bool bottom = beside && !top && !(row.isOpen() && into) && (y >= h - h / 4 || !into);
+  if (top || bottom) {
+    setDropHighlight({});
+    setDropLine(path, bottom);
+  } else {
+    setDropLine({}, false);
+    setDropHighlight(into ? path : juce::String());
+  }
 }
 
 void LibraryDrawer::setDropHighlight(const juce::String& path) {

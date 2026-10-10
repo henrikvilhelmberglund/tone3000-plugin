@@ -101,6 +101,11 @@ public:
   // the folder's library (Set Picture; library state). Blocks loaded from the folder, or a
   // folder inside it, show it instead of a TONE3000 lookup.
   static constexpr const char* kPicturesPref = "t3k.libraryPictures";
+  // Folders in your order (dropped between folders in the drawer): the
+  // lower-cased path of a folder -> the names of its folders, in order.
+  // Folders a list doesn't name follow, as listed (natural order). Items
+  // (captures, presets) keep their own order.
+  static constexpr const char* kFolderOrderPref = "t3k.libraryFolderOrder";
   // A Library row's drag description: { t3kLibraryPath: <node path> }. The
   // drawer's rows start these; gallery tiles and folder rows accept them.
   static constexpr const char* kDragKey = "t3kLibraryPath";
@@ -356,6 +361,10 @@ public:
   std::optional<LibraryToneRef> siteOriginalForBlock(const std::string& blockId) {
     return siteOriginalOf(playingSource(blockId));
   }
+  // Folder order: `dragged` can go just before / after `sibling` (two
+  // folders of one folder; a library's sections keep their places).
+  bool canPlaceBeside(const juce::String& dragged, const juce::String& sibling) const;
+  void placeFolder(const juce::String& dragged, const juce::String& sibling, bool after);
   // REFRESH (a block card): captures of the kind the block plays in its
   // folder that it doesn't list (kept, dropped or copied in since it
   // loaded its folder); 0 for none. Cached by the folder's date.
@@ -473,6 +482,7 @@ private:
   // What arrange needs from the message thread (prefs, the preset list).
   struct Arrangement {
     juce::var favorites, siteTones, factory, order;
+    juce::var folderOrder;  // kFolderOrderPref
     juce::var art;  // ToneArt's cache: folders matched to TONE3000 tones (their gear)
   };
   Arrangement arrangement() const;

@@ -631,6 +631,7 @@ TEST(LibraryTest, ABackupBringsItsLibraryStateHome) {
     "kept": { "Captures/Kept/Plexi.nam": { "source": "Captures/Amps/Plexi.nam" },
               "Captures/Kept/Site.nam": { "tone": { "id": 5 }, "model": { "id": 7 } } },
     "pictures": { "captures/amps": "p.png" },
+    "folders": { "captures": [ "Kept", "Amps" ] },
     "keep": "tonehound/Captures/Kept", "links": [ "D:/NAM" ] })")));
   const juce::File archive = t.base.getChildFile("backup.t3klibrary");
   ASSERT_TRUE(t.library.exportArchive(own, archive));
@@ -643,6 +644,7 @@ TEST(LibraryTest, ABackupBringsItsLibraryStateHome) {
   EXPECT_EQ(static_cast<int>(back["kept"]["Captures/Kept/Site.nam"]["model"]["id"]), 7);
   EXPECT_EQ(back["pictures"]["captures/amps"].toString(), juce::String("p.png"));
   EXPECT_TRUE(ls::picturesOf(own).getChildFile("p.png").existsAsFile());
+  EXPECT_EQ(back["folders"]["captures"][0].toString(), juce::String("Kept")) << "the folder order";
   EXPECT_EQ(back["keep"].toString(), juce::String("tonehound/Captures/Kept"));
   EXPECT_EQ(back["links"][0].toString(), juce::String("D:/NAM"));
 }

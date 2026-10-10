@@ -79,6 +79,19 @@ it onto another (it lands just above). The order is a per-machine pref
 (`t3k.libraryOrder`, library paths top first); a library it doesn't name
 follows in scan order.
 
+Folders can go in your order too: drag a folder onto the top or bottom edge
+of another folder in the same folder (a line marks where it goes; the
+middle of the row is "into", as always, and so is an open folder's bottom
+edge, its contents following). Only folders move: captures and presets keep
+their natural order, a linked folder keeps its place at Local's end, and a
+library's sections keep theirs. The order is kept per folder
+(`t3k.libraryFolderOrder`: a folder's path → its folders' names, in order;
+folders it doesn't name follow in natural order), mirrored into the
+library's state file like the pictures (`folders`), carried by Export
+Backup and Import, and kept through renames and moves. While a row is
+dragged, the list scrolls near its top and bottom edges (faster closer to
+the edge, and past the bottom).
+
 **Typed halves.** Every folder takes its type from the half it is in:
 captures folders list and take only captures and references, presets
 folders only presets, and moves, copies, adds and saves refuse the other

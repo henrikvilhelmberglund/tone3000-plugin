@@ -111,6 +111,14 @@ std::vector<LibraryNode> toneNodes(const juce::var& refs, const juce::String& un
 
 bool isDiskHalf(const LibraryNode& n) { return n.mount && !n.linked && !n.remote && !n.favorites; }
 
+// A JSON object's copy to change (a pref's value is shared).
+juce::DynamicObject::Ptr copyOfObject(const juce::var& object) {
+  juce::DynamicObject::Ptr out = new juce::DynamicObject();
+  if (const auto* o = object.getDynamicObject())
+    for (const auto& p : o->getProperties()) out->setProperty(p.name, p.value);
+  return out;
+}
+
 }  // namespace
 
 void LibraryStore::arrange(LibraryTree& tree, const Arrangement& with) {
@@ -212,6 +220,36 @@ void LibraryStore::arrange(LibraryTree& tree, const Arrangement& with) {
     for (auto& library : tree.libraries) walk(library, up);
   }
 
+  // Your folder order: a folder's folders in the order stored for it, in the
+  // places folders take among its children (a linked folder listed at Local's
+  // end stays there); ones it doesn't name after them, as listed. A library's
+  // sections keep their fixed order.
+  if (const auto* orders = with.folderOrder.getDynamicObject(); orders != nullptr && !orders->getProperties().isEmpty()) {
+    std::function<void(LibraryNode&)> walk = [&](LibraryNode& node) {
+      if (node.kind != LibraryNode::Kind::library)
+        if (const auto* names = orders->getProperty(juce::Identifier(node.path.toLowerCase())).getArray()) {
+          std::vector<size_t> slots;
+          std::vector<LibraryNode> folders;
+          for (size_t i = 0; i < node.children.size(); ++i)
+            if (node.children[i].kind == LibraryNode::Kind::folder) {
+              slots.push_back(i);
+              folders.push_back(std::move(node.children[i]));
+            }
+          const auto rank = [names](const LibraryNode& f) {
+            for (int i = 0; i < names->size(); ++i)
+              if ((*names)[i].toString() == f.name) return i;
+            return names->size();
+          };
+          std::stable_sort(folders.begin(), folders.end(),
+                           [&](const LibraryNode& a, const LibraryNode& b) { return rank(a) < rank(b); });
+          for (size_t k = 0; k < slots.size(); ++k) node.children[slots[k]] = std::move(folders[k]);
+        }
+      for (auto& child : node.children)
+        if (child.isContainer()) walk(child);
+    };
+    for (auto& library : tree.libraries) walk(library);
+  }
+
   // Your order; the rest keep theirs (yours, TONE3000, imported ones).
   juce::StringArray ordered;
   if (const auto* paths = with.order.getArray())
@@ -235,7 +273,7 @@ LibraryStore::Arrangement LibraryStore::arrangement() const {
       factory.add(juce::var(o));
     }
   return {prefs_.getJson(kFavoritesPref), prefs_.getJson(kSiteTonesPref), juce::var(factory), prefs_.getJson(kOrderPref),
-          prefs_.getJson(ToneArt::kCachePref)};
+          prefs_.getJson(kFolderOrderPref), prefs_.getJson(ToneArt::kCachePref)};
 }
 
 juce::String LibraryStore::halfFor(const LibraryNode& item) const {
@@ -1087,6 +1125,37 @@ void LibraryStore::addAsNewBlock(const LibraryNode& node) {
   const auto slot = appendSlot();
   if (slot.empty()) return (void)fail("The chain is full");
   use(node, slot);
+}
+
+bool LibraryStore::canPlaceBeside(const juce::String& dragged, const juce::String& sibling) const {
+  if (dragged.isEmpty() || dragged == sibling) return false;
+  const auto* a = tree_->find(dragged);
+  const auto* b = tree_->find(sibling);
+  if (a == nullptr || b == nullptr || a->kind != LibraryNode::Kind::folder || b->kind != LibraryNode::Kind::folder ||
+      a->favorites || b->favorites)
+    return false;
+  const auto* parent = tree_->parentOf(dragged);
+  return parent != nullptr && parent == tree_->parentOf(sibling) && parent->kind != LibraryNode::Kind::library;
+}
+
+void LibraryStore::placeFolder(const juce::String& dragged, const juce::String& sibling, bool after) {
+  if (!canPlaceBeside(dragged, sibling)) return;
+  const auto* parent = tree_->parentOf(dragged);
+  const auto moved = tree_->find(dragged)->name;
+  const auto beside = tree_->find(sibling)->name;
+  juce::StringArray names;  // the folders as they show now, the dragged one out
+  for (const auto& child : parent->children)
+    if (child.kind == LibraryNode::Kind::folder && child.path != dragged) names.add(child.name);
+  int at = names.indexOf(beside);
+  if (at < 0) return;
+  names.insert(after ? at + 1 : at, moved);
+  juce::Array<juce::var> list;
+  for (const auto& name : names) list.add(name);
+  auto all = copyOfObject(prefs_.getJson(kFolderOrderPref));
+  all->setProperty(juce::Identifier(parent->path.toLowerCase()), juce::var(list));
+  prefs_.setJson(kFolderOrderPref, juce::var(all.get()));
+  injectFavorites();  // re-sorted, no rescan
+  notify();
 }
 
 int LibraryStore::newInFolder(const std::string& blockId) {
@@ -2194,6 +2263,32 @@ void LibraryStore::remapPaths(const juce::String& from, const juce::String& to) 
     chain_.setLocalToneArt(id, juce::var(clear));
     artFor(source, id);
   }
+  // Folder orders: keyed by a folder's path (moved like the others), and a
+  // folder renamed keeps its place in its parent's list under its new name.
+  if (const auto orders = prefs_.getJson(kFolderOrderPref); const auto* old = orders.getDynamicObject()) {
+    // As strings (a path from elsewhere may not read as a file here).
+    const auto cut = [](const juce::String& p) { return juce::jmax(p.lastIndexOfChar('/'), p.lastIndexOfChar('\\')); };
+    const auto parentKey = from.substring(0, cut(from)).toLowerCase();
+    const bool renamed = juce::File(from).getParentDirectory() == juce::File(to).getParentDirectory();
+    const auto oldName = from.substring(cut(from) + 1), newName = to.substring(cut(to) + 1);
+    juce::DynamicObject::Ptr moved = new juce::DynamicObject();
+    bool changed = false;
+    for (const auto& entry : old->getProperties()) {
+      const auto key = entry.name.toString();
+      const auto next = movedTo(key, lowFrom, lowTo);
+      juce::var value = entry.value;
+      if (renamed && key == parentKey)
+        if (const auto* names = entry.value.getArray()) {
+          juce::Array<juce::var> list;
+          for (const auto& name : *names) list.add(name.toString() == oldName ? juce::var(newName) : name);
+          value = juce::var(list);
+          changed = true;
+        }
+      changed = changed || next != key;
+      moved->setProperty(juce::Identifier(next), value);
+    }
+    if (changed) prefs_.setJson(kFolderOrderPref, juce::var(moved.get()));
+  }
   // The library order (a renamed library keeps its place).
   if (const auto order = prefs_.getJson(kOrderPref); const auto* paths = order.getArray()) {
     juce::Array<juce::var> next;
@@ -2250,6 +2345,16 @@ void LibraryStore::forgetPaths(const juce::String& path) {
     }
   }
   for (auto it = open_.begin(); it != open_.end();) it = atOrUnder(*it, path) ? open_.erase(it) : std::next(it);
+  // Its folder orders (and those of the folders in it) go.
+  if (const auto orders = prefs_.getJson(kFolderOrderPref); const auto* old = orders.getDynamicObject()) {
+    juce::DynamicObject::Ptr kept = new juce::DynamicObject();
+    bool changed = false;
+    for (const auto& entry : old->getProperties()) {
+      if (atOrUnder(entry.name.toString(), low)) changed = true;
+      else kept->setProperty(entry.name, entry.value);
+    }
+    if (changed) prefs_.setJson(kFolderOrderPref, juce::var(kept.get()));
+  }
 }
 
 void LibraryStore::remapKept(const juce::String& from, const juce::String& to) {

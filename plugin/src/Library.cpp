@@ -1183,8 +1183,28 @@ void LocalLibrary::exportState(juce::ZipFile::Builder& zip, const juce::File& it
       pictures->setProperty(juce::Identifier(at), name);
       zip.addFile(picture, 0, kPicturesPrefix + name);
     }
+  // Folder orders: re-keyed like the pictures (no files of their own).
+  juce::DynamicObject::Ptr folderOrder = new juce::DynamicObject();
+  if (const auto* orders = state["folders"].getDynamicObject())
+    for (const auto& entry : orders->getProperties()) {
+      const juce::String key = entry.name.toString();
+      if (!entry.value.isArray())
+        continue;
+      juce::String at = key;
+      if (!juce::File::isAbsolutePath(key)) {
+        const juce::String low = library_state::lowerResolve(library, key);
+        if (library_state::lowerRelative(low, item).isEmpty())
+          continue;
+        at = library_state::lowerRelative(low, base);
+      } else if (!(whole && library == ownDir())) {
+        continue;
+      }
+      if (at.isNotEmpty())
+        folderOrder->setProperty(juce::Identifier(at), entry.value);
+    }
   out->setProperty("kept", juce::var(kept.get()));
   out->setProperty("pictures", juce::var(pictures.get()));
+  out->setProperty("folders", juce::var(folderOrder.get()));
   if (whole && library == ownDir())
     for (const char* own : {"keep", "order", "links"})
       if (state.hasProperty(own))
@@ -1280,6 +1300,22 @@ void LocalLibrary::importState(juce::ZipFile& zip, const juce::var& state, const
         }
       }
       section("pictures").setProperty(juce::Identifier(at), picture.getFileName());
+    }
+  if (const auto* orders = state["folders"].getDynamicObject())
+    for (const auto& entry : orders->getProperties()) {
+      const juce::String key = entry.name.toString();
+      if (!entry.value.isArray())
+        continue;
+      juce::String at;
+      if (juce::File::isAbsolutePath(key)) {
+        if (yoursWhole)
+          at = key.toLowerCase();
+      } else if (const juce::File folder = landed(key); folder != juce::File()) {
+        at = library_state::lowerRelative(folder.getFullPathName().toLowerCase(), library);
+      }
+      if (at.isEmpty() || section("folders").hasProperty(juce::Identifier(at)))
+        continue;
+      section("folders").setProperty(juce::Identifier(at), entry.value);
     }
   // Your whole library home again: its keep folder, order and links, where
   // it has none of its own.

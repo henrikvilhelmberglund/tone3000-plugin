@@ -64,6 +64,10 @@ takes drops.
   from it. PNG, JPEG, GIF and WebP all work.
 - Libraries can be reordered (drag one onto another, or **Move Up / Move
   Down**).
+- **Folders can go in your own order:** drag a folder onto the top or bottom
+  edge of another folder beside it. A line shows where it will go; dropping
+  on the middle of a folder still moves it inside. Captures inside folders
+  stay in natural order.
 - **Dragging near the top or bottom of the list scrolls it**, so you can
   drag a folder a long way.
 
