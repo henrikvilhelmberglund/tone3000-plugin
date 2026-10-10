@@ -356,6 +356,12 @@ public:
   std::optional<LibraryToneRef> siteOriginalForBlock(const std::string& blockId) {
     return siteOriginalOf(playingSource(blockId));
   }
+  // REFRESH (a block card): captures of the kind the block plays in its
+  // folder that it doesn't list (kept, dropped or copied in since it
+  // loaded its folder); 0 for none. Cached by the folder's date.
+  int newInFolder(const std::string& blockId);
+  // The block's folder loaded into it again, on the capture it plays.
+  void refreshBlock(const std::string& blockId);
   // A Library row's TONE3000 original, loaded the way a pick is.
   void useSiteOriginal(const juce::String& capturePath);
   // Swap the block to the original's folder / a kept copy's folder, starting
@@ -489,7 +495,9 @@ private:
   void progress(const juce::String& message);
   // Load a capture (with the captures beside it, starting on it) or a
   // folder of them, and remember the block it landed in.
-  void loadCapture(const juce::File& file, const std::string& target);
+  // `again`: the folder read afresh even when the block has the capture
+  // (REFRESH), not just a switch to it.
+  void loadCapture(const juce::File& file, const std::string& target, bool again = false);
   // Put the TONE3000 artwork of the capture's folder (ToneArt) on the block.
   void artFor(const juce::File& file, const std::string& blockId);
   juce::var refForBlock(const ChainItem& item) const;
@@ -533,6 +541,12 @@ private:
   // tree (cleared when a scan lands).
   juce::Array<juce::File> sameCaptures(const juce::String& path);
   std::map<juce::String, juce::Array<juce::File>> same_;
+  struct FolderFiles {
+    juce::int64 stamp = -1;  // the folder's date when listed
+    juce::String extension;
+    juce::StringArray names;  // lower-cased file names of that kind
+  };
+  std::map<juce::String, FolderFiles> folderFiles_;
   // The original of a stash copy the block plays without knowing its file.
   juce::File originalInLibrary(const juce::File& stash, const juce::String& name);
   // Blocks playing files that aren't at their paths any more (a project

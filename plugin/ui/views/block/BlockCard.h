@@ -214,6 +214,9 @@ private:
   // of it (KEPT; one: straight there, more: a menu of their folders).
   ChromeTextButton original_{"SOURCE", help::Key::libraryOriginal};
   ChromeTextButton kept_{"KEPT", help::Key::libraryKept};
+  // Above Source / Kept: the block's folder has captures it doesn't list
+  // (kept or copied in since it loaded): it reads the folder again.
+  ChromeTextButton refresh_{"REFRESH", help::Key::libraryRefreshBlock};
   std::unique_ptr<ContextMenu> keptMenu_;
   void syncKeepLinks();
   void openKeptMenu();

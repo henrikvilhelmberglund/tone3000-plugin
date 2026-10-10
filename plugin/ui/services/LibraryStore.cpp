@@ -1089,7 +1089,45 @@ void LibraryStore::addAsNewBlock(const LibraryNode& node) {
   use(node, slot);
 }
 
-void LibraryStore::loadCapture(const juce::File& file, const std::string& target) {
+int LibraryStore::newInFolder(const std::string& blockId) {
+  const auto* block = chain_.state().findBlock(blockId);
+  if (block == nullptr || !block->isTone() || !block->tone.local) return 0;
+  const auto playing = playingSource(blockId);
+  if (playing.isEmpty()) return 0;
+  const juce::File file(playing);
+  const auto folder = file.getParentDirectory();
+  if (!file.existsAsFile()) return 0;
+  // What a folder load takes: the files of the playing one's kind, no
+  // subfolders, none of a Mac zip's "._" leftovers.
+  auto& seen = folderFiles_[folder.getFullPathName()];
+  const auto stamp = folder.getLastModificationTime().toMilliseconds();
+  const auto extension = file.getFileExtension().toLowerCase();
+  if (seen.stamp != stamp || seen.extension != extension) {
+    seen = {stamp, extension, {}};
+    for (const auto& f : folder.findChildFiles(juce::File::findFiles, false, "*" + extension))
+      if (!f.getFileName().startsWith("._")) seen.names.add(f.getFileName().toLowerCase());
+  }
+  if (seen.names.size() > 300) return 0;  // past the folder-load cap: it loads alone anyway
+  std::set<juce::String> listed;
+  for (const auto& m : block->tone.models) {
+    const auto path = juce::File::isAbsolutePath(m.sourcePath) ? m.sourcePath
+                      : juce::URL(m.modelUrl).isLocalFile() ? juce::URL(m.modelUrl).getLocalFile().getFullPathName()
+                                                            : juce::String();
+    if (path.isNotEmpty() && juce::File(path).getParentDirectory() == folder)
+      listed.insert(juce::File(path).getFileName().toLowerCase());
+  }
+  int fresh = 0;
+  for (const auto& name : seen.names) fresh += listed.count(name) == 0 ? 1 : 0;
+  return fresh;
+}
+
+void LibraryStore::refreshBlock(const std::string& blockId) {
+  const auto playing = playingSource(blockId);
+  if (playing.isEmpty() || !juce::File(playing).existsAsFile()) return (void)fail("The capture it plays is missing");
+  loadCapture(juce::File(playing), blockId, /*again=*/true);
+}
+
+void LibraryStore::loadCapture(const juce::File& file, const std::string& target, bool again) {
   // Moved or deleted outside the plugin since the last scan: say so, and
   // scan again so the row goes.
   if (!file.exists()) {
@@ -1100,7 +1138,7 @@ void LibraryStore::loadCapture(const juce::File& file, const std::string& target
   // Another capture of the folder the block already plays: just that model,
   // as the block's own picker switches (no reading the folder again).
   if (const auto* block = chain_.state().findBlock(target);
-      !file.isDirectory() && block != nullptr && block->isTone() && block->tone.local)
+      !again && !file.isDirectory() && block != nullptr && block->isTone() && block->tone.local)
     for (const auto& m : block->tone.models)
       if (m.sourcePath.isNotEmpty() && juce::File(m.sourcePath) == file && m.modelUrl.isNotEmpty()) {
         if (m.id != block->activeModelId) {

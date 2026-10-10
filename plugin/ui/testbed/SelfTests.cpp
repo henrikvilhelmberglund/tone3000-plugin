@@ -1584,6 +1584,22 @@ struct LibraryFeatureTests : juce::UnitTest {
       pump(200);
     }
 
+    beginTest("REFRESH shows when the block's folder has captures it doesn't list, and reads it again");
+    {
+      // The block lists Plexi alone; Amps holds a hundred more.
+      backend.setChain(chain);
+      pump(200);
+      expect(library.newInFolder(blockId) > 0, "new captures in its folder");
+      auto* refresh = drive::byHelpPrefix(pluginRoot, "Refresh:");
+      expect(refresh != nullptr && refresh->isShowing(), "REFRESH on the card");
+      if (refresh != nullptr) {
+        drive::click(pluginRoot, *refresh);
+        pump(200);
+        expectEquals(backend.lastLocalLoadFile().getFullPathName(), plexi.getFullPathName(), "the folder read again, on Plexi");
+        expectEquals(juce::String(backend.lastLocalLoadTarget()), juce::String(blockId), "into this block");
+      }
+    }
+
     beginTest("Down in the search goes to the first capture shown, the keyboard with it");
     {
       library.select({});
