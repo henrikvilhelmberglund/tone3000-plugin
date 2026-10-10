@@ -12,8 +12,8 @@ main design decisions, lists the known gaps, and collects ideas for later.
 
 ## Size and shape
 
-The branch is fourteen commits on top of upstream v0.0.12 (`ab5e5ae`): the
-ten it was opened with, and four follow-ups (11 to 14). It touches 98 files
+The branch is nineteen commits on top of upstream v0.0.12 (`ab5e5ae`): the
+ten it was opened with, and nine follow-ups (11 to 19). It touches 98 files
 with about 23,000 added lines. About 6,200 of those are screenshot
 fixtures (`scenarios.json`), about 4,100 are tests and test support, and
 about 1,300 are docs, which leaves about 11,000 lines of product code.
@@ -37,11 +37,16 @@ own. They go from small and independent to large:
 | 12 | Blocks follow their files through Library renames and moves | bug fix | 7 |
 | 13 | Docs: this page, for 11 and 12 | docs | 1 |
 | 14 | Blocks find their moved files by name and bytes | bug fix | 13 |
+| 15 | Name the block card and model picker for screen readers | bug fix | 2 |
+| 16 | REFRESH: add a folder's new captures to its block | feature | 9 |
+| 17 | SOURCE prefers your own copy of a TONE3000 tone | feature | 5 |
+| 18 | Scroll the drawer while dragging near its edges | feature | 3 |
+| 19 | Folders in your order: drop between folders | feature | 12 |
 
 Commits 1 to 5 stand alone and could be merged separately. Commit 6 is
 useful on its own for OS file drops, and the Library's drag and drop needs
-it. Commits 7 to 9 are the Library itself, and 11, 12 and 14 fix what
-renaming a library showed (below).
+it. Commits 7 to 9 are the Library itself, 11, 12 and 14 fix what
+renaming a library showed, and 15 to 19 came from using it (below).
 
 ## Commit by commit
 
@@ -326,6 +331,75 @@ played had no stored bytes and showed "Download failed", and kept copies
 lost their names and pictures. Renames made in Explorer or Finder had the
 same effect.
 
+### 15. Names for the block card and the model picker
+
+**What:** the card is titled "Block" and the picker "Model".
+
+**Why:** commit 9 made both take keyboard focus (for numbers and A/B), which
+made them Tab stops without a screen-reader name. `UiTestbed --capture`
+fails on unnamed Tab stops.
+
+### 16. REFRESH
+
+**What:** a REFRESH button above SOURCE / KEPT, shown when the block's
+folder holds files of its kind that the block doesn't list
+(`LibraryStore::newInFolder`, cached by the folder's date). It loads the
+folder into the block again on the capture it plays (`refreshBlock`,
+`loadCapture(..., again)`, which skips the "already in the block: just
+switch" shortcut).
+
+**Why:** a block's captures are fixed when it loads its folder, and saved
+with the session, so a session reopens exactly as it was. That's right for
+a project, but a capture kept into the folder the block plays didn't join
+it, and the only way to get it was to load something from the folder again.
+Making it automatic would change saved sessions behind the user's back, so
+it's a button.
+
+### 17. SOURCE prefers your own copy
+
+**What:** for a copy kept from a TONE3000 tone, SOURCE (and the drawer's
+Load Source) first looks for the same model as a file of yours
+(`localSiteOriginal`):
+- a file linked to the same tone and model, or with the same recorded
+  bytes (Download All Captures, an earlier KEEP), the folder holding the
+  most of that tone winning;
+- else a file with those bytes in a folder the artwork lookup matched to
+  the tone (downloaded from the website into a linked folder), the size
+  checked before any file is read.
+
+Only with none does it load from TONE3000.
+
+**Why:** loading from TONE3000 means downloading, and stepping through the
+tone's models then downloads each one, with lag on every Left / Right.
+
+### 18. Scrolling while dragging
+
+**What:** while a drawer row is dragged, a 60 Hz timer scrolls the list
+when the pointer is near its top or bottom edge, faster closer to the edge
+and past the bottom.
+
+**Why:** JUCE's drag and drop doesn't scroll a viewport, so a folder could
+only be dragged as far as the list showed.
+
+### 19. Folders in your order
+
+**What:** dragging a folder onto the top or bottom quarter of a sibling
+folder's row places it before / after that folder, with a line marking
+where. The middle of the row is "into", as before, and so is an open
+folder's bottom edge.
+- **Storage:** the order is a pref per folder (`kFolderOrderPref`: a
+  folder's path → its folders' names), applied in `arrange` among the
+  places folders take.
+- **What stays put:** captures, linked folders at Local's end and a
+  library's sections keep their places.
+- **Persistence:** the order is mirrored into the library's state file
+  (`folders`, keyed like pictures), carried by Export Backup and Import,
+  and kept through renames and moves (`remapPaths`, `forgetPaths`). The
+  state file now counts `folders` as something to keep (`holdsAnything`).
+
+**Why:** names were the only way to order folders, so people renamed them
+("1. Pedal boost"), which also renames every path that points into them.
+
 ## Things to look at closely
 
 - **Threads.** `Backend::getLibrary` (worker), `prepareLocalToneInFolder`
@@ -352,9 +426,9 @@ same effect.
 ## Tests
 
 - **DSP tests (GoogleTest):**
-  - `library_tests.cpp` (38): file layer, formats, archives, state, sharing,
-    processor glue, blocks following renames and moves (and the model id the
-    Library recomputes);
+  - `library_tests.cpp` (38): file layer, formats, archives (the folder
+    order included), state, sharing, processor glue, blocks following
+    renames and moves (and the model id the Library recomputes);
   - `local_load_tests.cpp` (+6): folder loads, in-place, error pages, sort;
   - `chain_slot_tests.cpp` (4): splicing beside a block;
   - `nam_architecture_tests.cpp` (2): the A1 folder-name rule.

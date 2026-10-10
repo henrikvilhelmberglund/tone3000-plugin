@@ -229,6 +229,7 @@ void BlockCard::buildBody() {
     services_.toast.show(juce::String(position) + " / " + juce::String(count), Toast::Style::quiet);
   };
   setWantsKeyboardFocus(true);  // given by a click (mouseDown): numbers, A/B
+  setTitle("Block");             // a Tab stop now: its screen-reader name
   addMouseListener(this, true);
   // Opening retries a failed list fetch, so a transient failure never sticks.
   select_.onOpen = [this] {
@@ -244,8 +245,10 @@ void BlockCard::buildBody() {
   body_.addChildComponent(keepMore_);
   original_.onClick = [this] { services_.library.openOriginal(block_.blockId); };
   kept_.onClick = [this] { openKeptMenu(); };
+  refresh_.onClick = [this] { services_.library.refreshBlock(block_.blockId); };
   body_.addChildComponent(original_);
   body_.addChildComponent(kept_);
+  body_.addChildComponent(refresh_);
 
   body_.addChildComponent(infoBusy_);
 }
@@ -309,10 +312,17 @@ void BlockCard::syncKeepLinks() {
   const bool original = tone && services_.library.hasOriginal(block_.blockId);
   const bool kept = tone && !original && !services_.library.keptCopies(block_.blockId).isEmpty();
   const bool more = tone && siteToneId() > 0;  // KEEP's menu: TONE3000 tones (and captures kept from one)
-  if (original == original_.isVisible() && kept == kept_.isVisible() && more == keepMore_.isVisible()) return;
+  const int fresh = tone ? services_.library.newInFolder(block_.blockId) : 0;
+  if (fresh > 0)
+    refresh_.setHelpText("Refresh: add the " + juce::String(fresh) + (fresh == 1 ? " capture" : " captures") +
+                         " new in this block's folder.");
+  if (original == original_.isVisible() && kept == kept_.isVisible() && more == keepMore_.isVisible() &&
+      (fresh > 0) == refresh_.isVisible())
+    return;
   original_.setVisible(original);
   kept_.setVisible(kept);
   keepMore_.setVisible(more);
+  refresh_.setVisible(fresh > 0);
   resized();
 }
 
@@ -787,6 +797,11 @@ void BlockCard::layoutToneBody(juce::Rectangle<int> body) {
   const int linkY = keep_.getY() - kKeepLinkGap;
   if (original_.isVisible()) original_.setTopLeftPosition(keep_.getX(), linkY - original_.getHeight());
   if (kept_.isVisible()) kept_.setTopLeftPosition(keep_.getRight() - kept_.getWidth(), linkY - kept_.getHeight());
+  // Refresh above those (or where they'd be).
+  const int linksTop = original_.isVisible() ? original_.getY() - kKeepLinkGap
+                       : kept_.isVisible()   ? kept_.getY() - kKeepLinkGap
+                                             : linkY;
+  if (refresh_.isVisible()) refresh_.setTopLeftPosition(keep_.getRight() - refresh_.getWidth(), linksTop - refresh_.getHeight());
 
   const int metaX = centreX + kImageSize + kBodyGap;
   const int metaW = centreW - kImageSize - kBodyGap;

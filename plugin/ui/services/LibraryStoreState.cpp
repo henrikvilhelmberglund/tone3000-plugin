@@ -72,7 +72,7 @@ bool LibraryStore::pictureInUse(const juce::File& picture, const juce::String& e
 
 void LibraryStore::prefChanged(const juce::String& key) {
   if (loadingState_) return;
-  for (const char* pref : {kKeptPref, kPicturesPref, kKeepPref, kOrderPref, kLinksPref})
+  for (const char* pref : {kKeptPref, kPicturesPref, kKeepPref, kOrderPref, kLinksPref, kFolderOrderPref})
     if (key == pref) return stateSave_.start(500, [this] { saveState(); });
 }
 
@@ -91,7 +91,9 @@ bool LibraryStore::loadState() {
   const auto own = base.getChildFile(owner());
   auto kept = copyOf(prefs_.getJson(kKeptPref));
   auto pictures = copyOf(prefs_.getJson(kPicturesPref));
-  bool keptChanged = false, picturesChanged = false, keepChanged = false, orderChanged = false, linksChanged = false;
+  auto folderOrder = copyOf(prefs_.getJson(kFolderOrderPref));
+  bool keptChanged = false, picturesChanged = false, keepChanged = false, orderChanged = false, linksChanged = false,
+       foldersChanged = false;
   for (const auto& library : stateLibraries()) {
     const auto path = library.getFullPathName();
     const auto stamp = ls::stamp(library);
@@ -175,6 +177,28 @@ bool LibraryStore::loadState() {
               pictures->removeProperty(juce::Identifier(key));
               picturesChanged = true;
             }
+    // Folder orders: a folder's path (relative, or absolute in yours) -> its
+    // folders' names.
+    if (const auto* orders = state["folders"].getDynamicObject())
+      for (const auto& entry : orders->getProperties()) {
+        const auto key = readable(entry.name.toString()) ? ls::lowerResolve(library, entry.name.toString()) : juce::String();
+        if (key.isEmpty() || !entry.value.isArray()) {
+          skip("folders", entry);
+          continue;
+        }
+        const juce::Identifier id(key);
+        if (same(folderOrder->getProperty(id), entry.value)) continue;
+        folderOrder->setProperty(id, entry.value);
+        foldersChanged = true;
+      }
+    if (const auto* gone = before["folders"].getDynamicObject())
+      for (const auto& entry : gone->getProperties())
+        if (!state["folders"].hasProperty(entry.name) && readable(entry.name.toString()))
+          if (const auto key = ls::lowerResolve(library, entry.name.toString()); key.isNotEmpty())
+            if (folderOrder->hasProperty(juce::Identifier(key))) {
+              folderOrder->removeProperty(juce::Identifier(key));
+              foldersChanged = true;
+            }
     stateSkipped_[path] = skipped;
     if (library != own) continue;
     // Yours: the keep folder, the order and the links. These are this
@@ -212,10 +236,11 @@ bool LibraryStore::loadState() {
   const juce::ScopedValueSetter<bool> quiet(loadingState_, true);
   if (keptChanged) prefs_.setJson(kKeptPref, juce::var(kept.get()));
   if (picturesChanged) prefs_.setJson(kPicturesPref, juce::var(pictures.get()));
+  if (foldersChanged) prefs_.setJson(kFolderOrderPref, juce::var(folderOrder.get()));
   if (keptChanged || keepChanged) keepListeners_.call([](KeepListener& l) { l.keepChanged(); });
-  if (orderChanged && loaded_) injectFavorites();  // re-sorted
+  if ((orderChanged || foldersChanged) && loaded_) injectFavorites();  // re-sorted
   if (linksChanged && loaded_) refresh();
-  return keptChanged || picturesChanged || keepChanged || orderChanged || linksChanged;
+  return keptChanged || picturesChanged || keepChanged || orderChanged || linksChanged || foldersChanged;
 }
 
 void LibraryStore::saveState(bool reread) {
@@ -244,7 +269,7 @@ void LibraryStore::saveState(bool reread) {
     // What this instance left in the file unread (someone else's paths, a
     // picture not synced yet) stays in it.
     const auto& skipped = stateSkipped_[library.getFullPathName()];
-    for (const char* name : {"kept", "pictures"})
+    for (const char* name : {"kept", "pictures", "folders"})
       if (const auto* entries = skipped[name].getDynamicObject())
         for (const auto& entry : entries->getProperties()) section(library, name).setProperty(entry.name, entry.value);
     // Someone else's library: its owner's keep folder, order and links too.
@@ -304,6 +329,16 @@ void LibraryStore::saveState(bool reread) {
     const auto rel = ls::lowerRelative(key, home);
     section(home, "pictures").setProperty(juce::Identifier(rel.isNotEmpty() ? rel : key), at.getFileName());
   }
+
+  // Folder orders, in the library holding the folder (keys relative to it).
+  if (const auto orders = prefs_.getJson(kFolderOrderPref); const auto* all = orders.getDynamicObject())
+    for (const auto& entry : all->getProperties()) {
+      const auto key = entry.name.toString();
+      const auto home = stateHome(key, true, libraries, linked);
+      if (home == juce::File() || !entry.value.isArray()) continue;
+      const auto rel = ls::lowerRelative(key, home);
+      section(home, "folders").setProperty(juce::Identifier(rel.isNotEmpty() ? rel : key), entry.value);
+    }
 
   // Yours: the keep folder, the order, the links.
   if (own.isDirectory()) {

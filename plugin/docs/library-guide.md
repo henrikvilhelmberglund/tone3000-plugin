@@ -40,7 +40,12 @@ takes drops.
   that is.
 - A kept copy stays linked to where it came from. On the card, **SOURCE**
   loads the original's folder again, starting on it. On the original,
-  **KEPT** goes to your copy.
+  **KEPT** goes to your copy. For a copy kept from a TONE3000 tone, SOURCE
+  uses your own download of that tone when you have one, so there's no
+  waiting for TONE3000.
+- **REFRESH** shows above them when the block's folder has captures the
+  block doesn't list yet (you kept or copied more in since it loaded).
+  Press it to add them; the block stays on the capture it plays.
 - **TONE3000 tones** can be kept too. The arrow beside KEEP offers **Keep
   Capture** (a copy of the capture as a file), **Keep as Reference** (a small
   file that points at the tone and plays it from TONE3000), and **Download All
@@ -59,6 +64,12 @@ takes drops.
   from it. PNG, JPEG, GIF and WebP all work.
 - Libraries can be reordered (drag one onto another, or **Move Up / Move
   Down**).
+- **Folders can go in your own order:** drag a folder onto the top or bottom
+  edge of another folder beside it. A line shows where it will go; dropping
+  on the middle of a folder still moves it inside. Captures inside folders
+  stay in natural order.
+- **Dragging near the top or bottom of the list scrolls it**, so you can
+  drag a folder a long way.
 
 ### Pictures from TONE3000
 

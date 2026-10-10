@@ -32,7 +32,7 @@ enum class Key {
   libraryImport, libraryChooseRoot, libraryReveal, libraryRefresh, libraryUse, libraryLink, libraryUnlink,
   libraryLinked, libraryFavorites, libraryFavorite, libraryUnfavorite, libraryAudition, libraryAddNew,
   libraryCapturesRoot, libraryPresetsRoot, libraryImportFolder, libraryLoadFolder, libraryKeepHere,
-  libraryStopKeeping, libraryKeeping, libraryShare, libraryChooseBlock, libraryMissing, libraryShowMissing, libraryFindMissing, libraryDownloadMissing, libraryHideMissing, libraryForgetMissing, libraryKeep, libraryOriginal, libraryKept, libraryGoOriginal, libraryGoKept, libraryOwnFolder, libraryShowBlock, libraryOpenSite, libraryKeepMore, libraryKeepCapture, libraryKeepTone, libraryDownloadTone, libraryLoadOriginal, librarySite, librarySiteCaptures, librarySitePresets, libraryLocal, libraryMoveUp, libraryMoveDown, librarySetPicture, libraryCardPicture,
+  libraryStopKeeping, libraryKeeping, libraryShare, libraryChooseBlock, libraryMissing, libraryShowMissing, libraryFindMissing, libraryDownloadMissing, libraryHideMissing, libraryForgetMissing, libraryKeep, libraryOriginal, libraryKept, libraryRefreshBlock, libraryGoOriginal, libraryGoKept, libraryOwnFolder, libraryShowBlock, libraryOpenSite, libraryKeepMore, libraryKeepCapture, libraryKeepTone, libraryDownloadTone, libraryLoadOriginal, librarySite, librarySiteCaptures, librarySitePresets, libraryLocal, libraryMoveUp, libraryMoveDown, librarySetPicture, libraryCardPicture,
   libraryRemovePicture, libraryAddHere,
   // Tone browser
   browserSearch, browserSearchProfile, browserMoreFilters, browserFewerFilters, browserVerified, browserProfile, browserGear,

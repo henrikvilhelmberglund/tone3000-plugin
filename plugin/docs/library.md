@@ -79,6 +79,19 @@ it onto another (it lands just above). The order is a per-machine pref
 (`t3k.libraryOrder`, library paths top first); a library it doesn't name
 follows in scan order.
 
+Folders can go in your order too: drag a folder onto the top or bottom edge
+of another folder in the same folder (a line marks where it goes; the
+middle of the row is "into", as always, and so is an open folder's bottom
+edge, its contents following). Only folders move: captures and presets keep
+their natural order, a linked folder keeps its place at Local's end, and a
+library's sections keep theirs. The order is kept per folder
+(`t3k.libraryFolderOrder`: a folder's path → its folders' names, in order;
+folders it doesn't name follow in natural order), mirrored into the
+library's state file like the pictures (`folders`), carried by Export
+Backup and Import, and kept through renames and moves. While a row is
+dragged, the list scrolls near its top and bottom edges (faster closer to
+the edge, and past the bottom).
+
 **Typed halves.** Every folder takes its type from the half it is in:
 captures folders list and take only captures and references, presets
 folders only presets, and moves, copies, adds and saves refuse the other
@@ -311,7 +324,12 @@ so reopening the editor or the project shows it where you left it.
   ways, with one button above KEEP: on a kept copy, **SOURCE** swaps the
   block to the folder it was kept from, starting on it (to try the capture
   with a bit more gain); on an original, **KEPT** goes to the copy, or with
-  copies in several folders asks which. Without a recorded link (a copy
+  copies in several folders asks which. Above those, **REFRESH** shows when
+  the block's folder holds captures of its kind the block doesn't list
+  (kept, dropped or copied in since the block loaded it): it reads the
+  folder into the block again, staying on the capture it plays. A block's
+  captures are otherwise fixed when it loads its folder, so a session
+  always reopens as it was saved. Without a recorded link (a copy
   kept before links existed, or Keep on a block restored from an older
   project), a Library capture with the same file name and the same bytes
   stands in: one in a linked collection is the original of one in your own
@@ -325,7 +343,12 @@ so reopening the editor or the project shows it where you left it.
   dressed as the tone (its title, artwork, creator) with the tone's card
   (info, share, stats, KEEP's menu acting for the tone), and SOURCE (or the
   row's Load Source) loads the tone again with all its captures, on that
-  one; the tone's card offers KEPT. The arrow beside KEEP (TONE3000 tones
+  one; the tone's card offers KEPT. When you have the tone as files of
+  your own, SOURCE loads those instead of TONE3000 (no download, and
+  stepping the folder has no lag): a file linked to the same tone and model
+  (Download All Captures, an earlier KEEP), the folder holding the most of
+  that tone first; else a file with the copy's bytes in a folder the
+  artwork lookup matched to the tone (one downloaded from the website). The arrow beside KEEP (TONE3000 tones
   only) has the three ways: **Keep Capture** (as KEEP), **Keep as Reference**
   (its `.t3ktone`: one item holding all its captures, played from
   TONE3000; drawn yellow with a link mark, apart from your files in white

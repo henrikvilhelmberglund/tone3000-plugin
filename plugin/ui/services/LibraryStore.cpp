@@ -111,6 +111,14 @@ std::vector<LibraryNode> toneNodes(const juce::var& refs, const juce::String& un
 
 bool isDiskHalf(const LibraryNode& n) { return n.mount && !n.linked && !n.remote && !n.favorites; }
 
+// A JSON object's copy to change (a pref's value is shared).
+juce::DynamicObject::Ptr copyOfObject(const juce::var& object) {
+  juce::DynamicObject::Ptr out = new juce::DynamicObject();
+  if (const auto* o = object.getDynamicObject())
+    for (const auto& p : o->getProperties()) out->setProperty(p.name, p.value);
+  return out;
+}
+
 }  // namespace
 
 void LibraryStore::arrange(LibraryTree& tree, const Arrangement& with) {
@@ -212,6 +220,36 @@ void LibraryStore::arrange(LibraryTree& tree, const Arrangement& with) {
     for (auto& library : tree.libraries) walk(library, up);
   }
 
+  // Your folder order: a folder's folders in the order stored for it, in the
+  // places folders take among its children (a linked folder listed at Local's
+  // end stays there); ones it doesn't name after them, as listed. A library's
+  // sections keep their fixed order.
+  if (const auto* orders = with.folderOrder.getDynamicObject(); orders != nullptr && !orders->getProperties().isEmpty()) {
+    std::function<void(LibraryNode&)> walk = [&](LibraryNode& node) {
+      if (node.kind != LibraryNode::Kind::library)
+        if (const auto* names = orders->getProperty(juce::Identifier(node.path.toLowerCase())).getArray()) {
+          std::vector<size_t> slots;
+          std::vector<LibraryNode> folders;
+          for (size_t i = 0; i < node.children.size(); ++i)
+            if (node.children[i].kind == LibraryNode::Kind::folder) {
+              slots.push_back(i);
+              folders.push_back(std::move(node.children[i]));
+            }
+          const auto rank = [names](const LibraryNode& f) {
+            for (int i = 0; i < names->size(); ++i)
+              if ((*names)[i].toString() == f.name) return i;
+            return names->size();
+          };
+          std::stable_sort(folders.begin(), folders.end(),
+                           [&](const LibraryNode& a, const LibraryNode& b) { return rank(a) < rank(b); });
+          for (size_t k = 0; k < slots.size(); ++k) node.children[slots[k]] = std::move(folders[k]);
+        }
+      for (auto& child : node.children)
+        if (child.isContainer()) walk(child);
+    };
+    for (auto& library : tree.libraries) walk(library);
+  }
+
   // Your order; the rest keep theirs (yours, TONE3000, imported ones).
   juce::StringArray ordered;
   if (const auto* paths = with.order.getArray())
@@ -235,7 +273,7 @@ LibraryStore::Arrangement LibraryStore::arrangement() const {
       factory.add(juce::var(o));
     }
   return {prefs_.getJson(kFavoritesPref), prefs_.getJson(kSiteTonesPref), juce::var(factory), prefs_.getJson(kOrderPref),
-          prefs_.getJson(ToneArt::kCachePref)};
+          prefs_.getJson(kFolderOrderPref), prefs_.getJson(ToneArt::kCachePref)};
 }
 
 juce::String LibraryStore::halfFor(const LibraryNode& item) const {
@@ -1089,7 +1127,76 @@ void LibraryStore::addAsNewBlock(const LibraryNode& node) {
   use(node, slot);
 }
 
-void LibraryStore::loadCapture(const juce::File& file, const std::string& target) {
+bool LibraryStore::canPlaceBeside(const juce::String& dragged, const juce::String& sibling) const {
+  if (dragged.isEmpty() || dragged == sibling) return false;
+  const auto* a = tree_->find(dragged);
+  const auto* b = tree_->find(sibling);
+  if (a == nullptr || b == nullptr || a->kind != LibraryNode::Kind::folder || b->kind != LibraryNode::Kind::folder ||
+      a->favorites || b->favorites)
+    return false;
+  const auto* parent = tree_->parentOf(dragged);
+  return parent != nullptr && parent == tree_->parentOf(sibling) && parent->kind != LibraryNode::Kind::library;
+}
+
+void LibraryStore::placeFolder(const juce::String& dragged, const juce::String& sibling, bool after) {
+  if (!canPlaceBeside(dragged, sibling)) return;
+  const auto* parent = tree_->parentOf(dragged);
+  const auto moved = tree_->find(dragged)->name;
+  const auto beside = tree_->find(sibling)->name;
+  juce::StringArray names;  // the folders as they show now, the dragged one out
+  for (const auto& child : parent->children)
+    if (child.kind == LibraryNode::Kind::folder && child.path != dragged) names.add(child.name);
+  int at = names.indexOf(beside);
+  if (at < 0) return;
+  names.insert(after ? at + 1 : at, moved);
+  juce::Array<juce::var> list;
+  for (const auto& name : names) list.add(name);
+  auto all = copyOfObject(prefs_.getJson(kFolderOrderPref));
+  all->setProperty(juce::Identifier(parent->path.toLowerCase()), juce::var(list));
+  prefs_.setJson(kFolderOrderPref, juce::var(all.get()));
+  injectFavorites();  // re-sorted, no rescan
+  notify();
+}
+
+int LibraryStore::newInFolder(const std::string& blockId) {
+  const auto* block = chain_.state().findBlock(blockId);
+  if (block == nullptr || !block->isTone() || !block->tone.local) return 0;
+  const auto playing = playingSource(blockId);
+  if (playing.isEmpty()) return 0;
+  const juce::File file(playing);
+  const auto folder = file.getParentDirectory();
+  if (!file.existsAsFile()) return 0;
+  // What a folder load takes: the files of the playing one's kind, no
+  // subfolders, none of a Mac zip's "._" leftovers.
+  auto& seen = folderFiles_[folder.getFullPathName()];
+  const auto stamp = folder.getLastModificationTime().toMilliseconds();
+  const auto extension = file.getFileExtension().toLowerCase();
+  if (seen.stamp != stamp || seen.extension != extension) {
+    seen = {stamp, extension, {}};
+    for (const auto& f : folder.findChildFiles(juce::File::findFiles, false, "*" + extension))
+      if (!f.getFileName().startsWith("._")) seen.names.add(f.getFileName().toLowerCase());
+  }
+  if (seen.names.size() > 300) return 0;  // past the folder-load cap: it loads alone anyway
+  std::set<juce::String> listed;
+  for (const auto& m : block->tone.models) {
+    const auto path = juce::File::isAbsolutePath(m.sourcePath) ? m.sourcePath
+                      : juce::URL(m.modelUrl).isLocalFile() ? juce::URL(m.modelUrl).getLocalFile().getFullPathName()
+                                                            : juce::String();
+    if (path.isNotEmpty() && juce::File(path).getParentDirectory() == folder)
+      listed.insert(juce::File(path).getFileName().toLowerCase());
+  }
+  int fresh = 0;
+  for (const auto& name : seen.names) fresh += listed.count(name) == 0 ? 1 : 0;
+  return fresh;
+}
+
+void LibraryStore::refreshBlock(const std::string& blockId) {
+  const auto playing = playingSource(blockId);
+  if (playing.isEmpty() || !juce::File(playing).existsAsFile()) return (void)fail("The capture it plays is missing");
+  loadCapture(juce::File(playing), blockId, /*again=*/true);
+}
+
+void LibraryStore::loadCapture(const juce::File& file, const std::string& target, bool again) {
   // Moved or deleted outside the plugin since the last scan: say so, and
   // scan again so the row goes.
   if (!file.exists()) {
@@ -1100,7 +1207,7 @@ void LibraryStore::loadCapture(const juce::File& file, const std::string& target
   // Another capture of the folder the block already plays: just that model,
   // as the block's own picker switches (no reading the folder again).
   if (const auto* block = chain_.state().findBlock(target);
-      !file.isDirectory() && block != nullptr && block->isTone() && block->tone.local)
+      !again && !file.isDirectory() && block != nullptr && block->isTone() && block->tone.local)
     for (const auto& m : block->tone.models)
       if (m.sourcePath.isNotEmpty() && juce::File(m.sourcePath) == file && m.modelUrl.isNotEmpty()) {
         if (m.id != block->activeModelId) {
@@ -1689,7 +1796,54 @@ bool LibraryStore::hasOriginal(const std::string& blockId) {
 }
 
 void LibraryStore::useSiteOriginal(const juce::String& path) {
-  if (const auto ref = siteOriginalOf(path)) loadToneRef(*ref, auditionTarget());
+  const auto ref = siteOriginalOf(path);
+  if (!ref) return;
+  if (const auto local = localSiteOriginal(path); local != juce::File()) return loadCapture(local, auditionTarget());
+  loadToneRef(*ref, auditionTarget());
+}
+
+juce::File LibraryStore::localSiteOriginal(const juce::String& path) const {
+  const auto index = prefs_.getJson(kKeptPref);  // held: the properties live in it
+  const auto link = index.getProperty(juce::Identifier(path), {});
+  const int toneId = link["tone"]["id"], modelId = link["model"]["id"];
+  if (toneId <= 0) return {};
+  const auto hash = link["hash"].toString();
+  // Every file of yours linked to that tone, by folder (to tell a whole
+  // download from a single copy kept somewhere).
+  std::map<juce::String, int> ofTone;
+  std::vector<juce::File> sameModel;
+  if (const auto* links = index.getDynamicObject())
+    for (const auto& other : links->getProperties()) {
+      if (other.name.toString() == path || static_cast<int>(other.value["tone"]["id"]) != toneId) continue;
+      const juce::File file(other.name.toString());
+      if (!file.existsAsFile()) continue;
+      ++ofTone[file.getParentDirectory().getFullPathName()];
+      const bool model = modelId > 0 && static_cast<int>(other.value["model"]["id"]) == modelId;
+      if (model || (hash.isNotEmpty() && other.value["hash"].toString() == hash)) sameModel.push_back(file);
+    }
+  juce::File best;
+  int most = 0;
+  for (const auto& file : sameModel)
+    if (const int n = ofTone[file.getParentDirectory().getFullPathName()]; n > most) {
+      best = file;
+      most = n;
+    }
+  if (best != juce::File() || hash.isEmpty()) return best;
+  // Not linked (downloaded from the website into a linked folder): a folder
+  // the artwork lookup matched to that tone, its file with those bytes (the
+  // size first, so only a candidate is read).
+  const auto size = hash.fromLastOccurrenceOf(":", false, false).getLargeIntValue();
+  if (const auto art = prefs_.getJson(ToneArt::kCachePref); const auto* folders = art.getDynamicObject())
+    for (const auto& entry : folders->getProperties()) {
+      if (static_cast<int>(entry.value.getProperty("id", 0)) != toneId) continue;
+      const juce::File folder(entry.name.toString());
+      for (const auto& file : folder.findChildFiles(juce::File::findFiles, false, "*.nam;*.wav")) {
+        if (file.getFullPathName() == path || file.getSize() != size) continue;
+        juce::MemoryBlock bytes;
+        if (file.loadFileAsData(bytes) && library_state::contentHash(bytes) == hash) return file;
+      }
+    }
+  return {};
 }
 
 juce::File LibraryStore::knownOriginalOf(const juce::String& path) {
@@ -2109,6 +2263,32 @@ void LibraryStore::remapPaths(const juce::String& from, const juce::String& to) 
     chain_.setLocalToneArt(id, juce::var(clear));
     artFor(source, id);
   }
+  // Folder orders: keyed by a folder's path (moved like the others), and a
+  // folder renamed keeps its place in its parent's list under its new name.
+  if (const auto orders = prefs_.getJson(kFolderOrderPref); const auto* old = orders.getDynamicObject()) {
+    // As strings (a path from elsewhere may not read as a file here).
+    const auto cut = [](const juce::String& p) { return juce::jmax(p.lastIndexOfChar('/'), p.lastIndexOfChar('\\')); };
+    const auto parentKey = from.substring(0, cut(from)).toLowerCase();
+    const bool renamed = juce::File(from).getParentDirectory() == juce::File(to).getParentDirectory();
+    const auto oldName = from.substring(cut(from) + 1), newName = to.substring(cut(to) + 1);
+    juce::DynamicObject::Ptr moved = new juce::DynamicObject();
+    bool changed = false;
+    for (const auto& entry : old->getProperties()) {
+      const auto key = entry.name.toString();
+      const auto next = movedTo(key, lowFrom, lowTo);
+      juce::var value = entry.value;
+      if (renamed && key == parentKey)
+        if (const auto* names = entry.value.getArray()) {
+          juce::Array<juce::var> list;
+          for (const auto& name : *names) list.add(name.toString() == oldName ? juce::var(newName) : name);
+          value = juce::var(list);
+          changed = true;
+        }
+      changed = changed || next != key;
+      moved->setProperty(juce::Identifier(next), value);
+    }
+    if (changed) prefs_.setJson(kFolderOrderPref, juce::var(moved.get()));
+  }
   // The library order (a renamed library keeps its place).
   if (const auto order = prefs_.getJson(kOrderPref); const auto* paths = order.getArray()) {
     juce::Array<juce::var> next;
@@ -2165,6 +2345,16 @@ void LibraryStore::forgetPaths(const juce::String& path) {
     }
   }
   for (auto it = open_.begin(); it != open_.end();) it = atOrUnder(*it, path) ? open_.erase(it) : std::next(it);
+  // Its folder orders (and those of the folders in it) go.
+  if (const auto orders = prefs_.getJson(kFolderOrderPref); const auto* old = orders.getDynamicObject()) {
+    juce::DynamicObject::Ptr kept = new juce::DynamicObject();
+    bool changed = false;
+    for (const auto& entry : old->getProperties()) {
+      if (atOrUnder(entry.name.toString(), low)) changed = true;
+      else kept->setProperty(entry.name, entry.value);
+    }
+    if (changed) prefs_.setJson(kFolderOrderPref, juce::var(kept.get()));
+  }
 }
 
 void LibraryStore::remapKept(const juce::String& from, const juce::String& to) {
@@ -2204,7 +2394,11 @@ juce::String LibraryStore::pictureFolderFor(const std::string& blockId) {
 }
 
 void LibraryStore::openOriginal(const std::string& blockId) {
-  if (const auto site = siteOriginalOf(playingSource(blockId))) return loadToneRef(*site, blockId);
+  if (const auto site = siteOriginalOf(playingSource(blockId))) {
+    if (const auto local = localSiteOriginal(playingSource(blockId)); local != juce::File())
+      return loadCapture(local, blockId);
+    return loadToneRef(*site, blockId);
+  }
   const auto original = keptFrom(blockId);
   if (original == juce::File()) return (void)fail("The original is missing");
   loadCapture(original, blockId);

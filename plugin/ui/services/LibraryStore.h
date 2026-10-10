@@ -101,6 +101,11 @@ public:
   // the folder's library (Set Picture; library state). Blocks loaded from the folder, or a
   // folder inside it, show it instead of a TONE3000 lookup.
   static constexpr const char* kPicturesPref = "t3k.libraryPictures";
+  // Folders in your order (dropped between folders in the drawer): the
+  // lower-cased path of a folder -> the names of its folders, in order.
+  // Folders a list doesn't name follow, as listed (natural order). Items
+  // (captures, presets) keep their own order.
+  static constexpr const char* kFolderOrderPref = "t3k.libraryFolderOrder";
   // A Library row's drag description: { t3kLibraryPath: <node path> }. The
   // drawer's rows start these; gallery tiles and folder rows accept them.
   static constexpr const char* kDragKey = "t3kLibraryPath";
@@ -356,8 +361,26 @@ public:
   std::optional<LibraryToneRef> siteOriginalForBlock(const std::string& blockId) {
     return siteOriginalOf(playingSource(blockId));
   }
-  // A Library row's TONE3000 original, loaded the way a pick is.
+  // Folder order: `dragged` can go just before / after `sibling` (two
+  // folders of one folder; a library's sections keep their places).
+  bool canPlaceBeside(const juce::String& dragged, const juce::String& sibling) const;
+  void placeFolder(const juce::String& dragged, const juce::String& sibling, bool after);
+  // REFRESH (a block card): captures of the kind the block plays in its
+  // folder that it doesn't list (kept, dropped or copied in since it
+  // loaded its folder); 0 for none. Cached by the folder's date.
+  int newInFolder(const std::string& blockId);
+  // The block's folder loaded into it again, on the capture it plays.
+  void refreshBlock(const std::string& blockId);
+  // A Library row's TONE3000 original, loaded the way a pick is (from your
+  // own copy of it when you have one: localSiteOriginal).
   void useSiteOriginal(const juce::String& capturePath);
+  // A capture kept from a TONE3000 tone: the same model of that tone as a
+  // file of yours elsewhere (Download All Captures, or a copy kept before),
+  // by its link to the tone and model, else by the same bytes; of several,
+  // the one whose folder holds the most of that tone. Invalid with none.
+  // What SOURCE loads before going to TONE3000: no download, and the folder
+  // steps without lag.
+  juce::File localSiteOriginal(const juce::String& capturePath) const;
   // Swap the block to the original's folder / a kept copy's folder, starting
   // on that capture.
   void openOriginal(const std::string& blockId);
@@ -459,6 +482,7 @@ private:
   // What arrange needs from the message thread (prefs, the preset list).
   struct Arrangement {
     juce::var favorites, siteTones, factory, order;
+    juce::var folderOrder;  // kFolderOrderPref
     juce::var art;  // ToneArt's cache: folders matched to TONE3000 tones (their gear)
   };
   Arrangement arrangement() const;
@@ -489,7 +513,9 @@ private:
   void progress(const juce::String& message);
   // Load a capture (with the captures beside it, starting on it) or a
   // folder of them, and remember the block it landed in.
-  void loadCapture(const juce::File& file, const std::string& target);
+  // `again`: the folder read afresh even when the block has the capture
+  // (REFRESH), not just a switch to it.
+  void loadCapture(const juce::File& file, const std::string& target, bool again = false);
   // Put the TONE3000 artwork of the capture's folder (ToneArt) on the block.
   void artFor(const juce::File& file, const std::string& blockId);
   juce::var refForBlock(const ChainItem& item) const;
@@ -533,6 +559,12 @@ private:
   // tree (cleared when a scan lands).
   juce::Array<juce::File> sameCaptures(const juce::String& path);
   std::map<juce::String, juce::Array<juce::File>> same_;
+  struct FolderFiles {
+    juce::int64 stamp = -1;  // the folder's date when listed
+    juce::String extension;
+    juce::StringArray names;  // lower-cased file names of that kind
+  };
+  std::map<juce::String, FolderFiles> folderFiles_;
   // The original of a stash copy the block plays without knowing its file.
   juce::File originalInLibrary(const juce::File& stash, const juce::String& name);
   // Blocks playing files that aren't at their paths any more (a project

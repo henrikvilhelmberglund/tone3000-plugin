@@ -121,7 +121,7 @@ inline juce::var read(const juce::File& dir) {
 }
 
 inline bool holdsAnything(const juce::var& state) {
-  for (const char* section : {"kept", "pictures"})
+  for (const char* section : {"kept", "pictures", "folders"})
     if (const auto* o = state[section].getDynamicObject(); o != nullptr && !o->getProperties().isEmpty()) return true;
   for (const char* list : {"order", "links"})
     if (const auto* a = state[list].getArray(); a != nullptr && !a->isEmpty()) return true;

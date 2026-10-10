@@ -192,6 +192,7 @@ std::map<Key, String> buildTable() {
   t[Key::libraryKeep] = U("Keep: save the model this block plays into your Library.");
   t[Key::libraryOriginal] = U("Source: load the capture this one was kept from.");
   t[Key::libraryKept] = U("Kept: load the copy you kept of this capture.");
+  t[Key::libraryRefreshBlock] = U("Refresh: add the captures new in this block's folder.");
   t[Key::libraryGoOriginal] = U("Go to Source: show the capture this one was kept from.");
   t[Key::libraryGoKept] = U("Go to Kept: show the copy you kept of this capture.");
   t[Key::libraryOwnFolder] = U("Put in Own Folder: move this into a new folder named after it.");

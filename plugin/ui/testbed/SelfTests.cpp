@@ -1584,6 +1584,57 @@ struct LibraryFeatureTests : juce::UnitTest {
       pump(200);
     }
 
+    beginTest("REFRESH shows when the block's folder has captures it doesn't list, and reads it again");
+    {
+      // The block lists Plexi alone; Amps holds a hundred more.
+      backend.setChain(chain);
+      pump(200);
+      expect(library.newInFolder(blockId) > 0, "new captures in its folder");
+      auto* refresh = drive::byHelpPrefix(pluginRoot, "Refresh:");
+      expect(refresh != nullptr && refresh->isShowing(), "REFRESH on the card");
+      if (refresh != nullptr) {
+        drive::click(pluginRoot, *refresh);
+        pump(200);
+        expectEquals(backend.lastLocalLoadFile().getFullPathName(), plexi.getFullPathName(), "the folder read again, on Plexi");
+        expectEquals(juce::String(backend.lastLocalLoadTarget()), juce::String(blockId), "into this block");
+      }
+    }
+
+    beginTest("SOURCE of a copy kept from a TONE3000 tone prefers your own download of that tone");
+    {
+      const auto make = [&](const juce::String& rel) {
+        const auto f = root.getChildFile(rel);
+        f.getParentDirectory().createDirectory();
+        f.replaceWithText("{}");
+        return f;
+      };
+      const auto copy = make("Keepers/Boost.nam");
+      const auto download = make("Downloads/Boost Tone/Boost - High.nam");
+      make("Downloads/Boost Tone/Boost - Low.nam");
+      const auto single = make("Elsewhere/Boost - High.nam");
+      const auto link = [](int model) {
+        auto* tone = new juce::DynamicObject();
+        tone->setProperty("id", 4242);
+        tone->setProperty("title", "Boost Tone");
+        auto* m = new juce::DynamicObject();
+        m->setProperty("id", model);
+        auto* o = new juce::DynamicObject();
+        o->setProperty("tone", juce::var(tone));
+        o->setProperty("model", juce::var(m));
+        return juce::var(o);
+      };
+      const auto before = prefs.getJson(LibraryStore::kKeptPref);
+      auto* index = new juce::DynamicObject();
+      index->setProperty(juce::Identifier(copy.getFullPathName()), link(9));
+      index->setProperty(juce::Identifier(download.getFullPathName()), link(9));
+      index->setProperty(juce::Identifier(root.getChildFile("Downloads/Boost Tone/Boost - Low.nam").getFullPathName()), link(10));
+      index->setProperty(juce::Identifier(single.getFullPathName()), link(9));
+      prefs.setJson(LibraryStore::kKeptPref, juce::var(index));
+      expect(library.localSiteOriginal(copy.getFullPathName()) == download,
+             "the whole download, not the single copy: " + library.localSiteOriginal(copy.getFullPathName()).getFullPathName());
+      prefs.setJson(LibraryStore::kKeptPref, before);
+    }
+
     beginTest("Down in the search goes to the first capture shown, the keyboard with it");
     {
       library.select({});
@@ -1802,8 +1853,16 @@ struct LibraryStateTests : juce::UnitTest {
       library.rememberKeptForTesting(kept.getChildFile("Site.nam"), site);
       library.setPicture(amps.getFullPathName(), png);
       library.setKeepTarget(kept.getFullPathName());
+      {
+        // Captures' folders in your order (dropped between them).
+        auto* order = new juce::DynamicObject();
+        order->setProperty(juce::Identifier(own.getChildFile("Captures").getFullPathName().toLowerCase()),
+                           juce::Array<juce::var>{"Kept", "Amps"});
+        host.pluginRoot().services().prefs.setJson(LibraryStore::kFolderOrderPref, juce::var(order));
+      }
       library.saveState();
       const auto state = ls::read(own);
+      expectEquals(state["folders"]["captures"][0].toString(), juce::String("Kept"), "the folder order, relative");
       expectEquals(state["kept"]["Captures/Kept/Plexi.nam"]["source"].toString(), juce::String("Captures/Amps/Plexi.nam"));
       expectEquals(static_cast<int>(state["kept"]["Captures/Kept/Site.nam"]["tone"]["id"]), 5);
       const auto picture = state["pictures"]["captures/amps"].toString();
@@ -1824,6 +1883,9 @@ struct LibraryStateTests : juce::UnitTest {
       expect(library.siteOriginalOf(kept.getChildFile("Site.nam").getFullPathName()).has_value(), "the TONE3000 link");
       expect(library.pictureFor(amps.getFullPathName()).existsAsFile(), "the picture");
       expectEquals(library.keepTarget(), kept.getFullPathName());
+      const auto orders = prefs.getJson(LibraryStore::kFolderOrderPref);
+      expectEquals(orders[juce::Identifier(own.getChildFile("Captures").getFullPathName().toLowerCase())][1].toString(),
+                   juce::String("Amps"), "the folder order");
       expect(!library.loadStateForTesting(), "read once, until it changes");
     }
 
@@ -3962,6 +4024,50 @@ struct LibraryArrangeTests : juce::UnitTest {
     library.moveLibrary(minePath, 1);  // ...when the arrangement changes (as favorites or TONE3000's tones landing do)
     pump(300);
     expect(names().startsWith("TONE3000|" + mineName), "the scan arranged with what is current: " + names());
+
+    beginTest("folders go in your order (dropped between folders), and keep it through a rescan and a rename");
+    {
+      prefs.remove(LibraryStore::kFolderOrderPref);
+      library.refresh(/*fresh=*/true);
+      pump(300);
+      const auto folders = [&] {
+        juce::StringArray out;
+        if (const auto* captures = library.capturesRoot())
+          for (const auto& c : captures->children)
+            if (c.kind == LibraryNode::Kind::folder) out.add(c.name);
+        return out.joinIntoString("|");
+      };
+      const auto pathOf = [&](const juce::String& name) {
+        if (const auto* captures = library.capturesRoot())
+          for (const auto& c : captures->children)
+            if (c.name == name) return c.path;
+        return juce::String();
+      };
+      expectEquals(folders(), juce::String("Clean|Crunch|High gain"), "natural order to start");
+      expect(library.canPlaceBeside(pathOf("High gain"), pathOf("Clean")), "two folders of one folder");
+      expect(!library.canPlaceBeside(library.capturesRoot()->path, library.presetsRoot()->path), "a library's sections stay");
+      library.placeFolder(pathOf("High gain"), pathOf("Clean"), /*after=*/false);
+      pump(50);
+      expectEquals(folders(), juce::String("High gain|Clean|Crunch"), "before Clean");
+      library.placeFolder(pathOf("Clean"), pathOf("Crunch"), /*after=*/true);
+      pump(50);
+      expectEquals(folders(), juce::String("High gain|Crunch|Clean"), "after Crunch");
+      library.refresh(/*fresh=*/true);
+      pump(300);
+      expectEquals(folders(), juce::String("High gain|Crunch|Clean"), "through a rescan");
+      // Renamed: its place under its new name (the mock's tree keeps the old one).
+      const auto capturesKey = library.capturesRoot()->path.toLowerCase();
+      library.rename(pathOf("Crunch"), "Crunchy");
+      pump(100);
+      juce::StringArray stored;
+      const auto orders = prefs.getJson(LibraryStore::kFolderOrderPref);  // held: the list points into it
+      if (const auto* list = orders[juce::Identifier(capturesKey)].getArray())
+        for (const auto& n : *list) stored.add(n.toString());
+      expectEquals(stored.joinIntoString("|"), juce::String("High gain|Crunchy|Clean"), "renamed in place");
+      prefs.remove(LibraryStore::kFolderOrderPref);
+      library.refresh(/*fresh=*/true);
+      pump(300);
+    }
 
     beginTest("the view is this instance's: a new editor opens it where it was");
     {
