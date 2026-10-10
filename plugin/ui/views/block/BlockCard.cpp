@@ -229,6 +229,7 @@ void BlockCard::buildBody() {
     services_.toast.show(juce::String(position) + " / " + juce::String(count), Toast::Style::quiet);
   };
   setWantsKeyboardFocus(true);  // given by a click (mouseDown): numbers, A/B
+  setTitle("Block");             // a Tab stop now: its screen-reader name
   addMouseListener(this, true);
   // Opening retries a failed list fetch, so a transient failure never sticks.
   select_.onOpen = [this] {

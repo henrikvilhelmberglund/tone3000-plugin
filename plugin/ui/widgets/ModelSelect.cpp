@@ -185,6 +185,7 @@ ModelSelect::ModelSelect()
   // A click anywhere on it (its steppers and name are children) gives it the
   // keyboard: numbers pick a model.
   setWantsKeyboardFocus(true);
+  setTitle("Model");  // a Tab stop now: its screen-reader name
   addMouseListener(this, true);
 }
 
