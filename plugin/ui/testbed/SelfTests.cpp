@@ -4207,8 +4207,9 @@ struct ToneArtTests : juce::UnitTest {
 
     beginTest("a renamed folder: its creator's tone whose models are its files, cached; an old miss asked again");
     {
-      // Title searches find nothing; the creator search finds two of 2dor's
-      // tones, and the second one's models are the folder's files.
+      // Title searches find nothing, nor does 2dor's tones' for the folder's
+      // whole name; for its first words, two of them, and the one sharing
+      // more words with the folder (checked first) has its files as models.
       struct CreatorSession : ScriptedSession {
         int searches = 0, modelLists = 0;
         juce::StringArray creators;
@@ -4218,7 +4219,8 @@ struct ToneArtTests : juce::UnitTest {
           TonePage page;
           if (!query.creators.empty()) {
             creators.add(query.creators.front() + ": " + query.text);
-            page.data = {tone(40, "Bogner Ecstasy", "2dor"), tone(41, "Bogner Uberschall", "2dor")};
+            if (query.text == "Bogner Uberschall")
+              page.data = {tone(40, "Bogner Ecstasy", "2dor"), tone(41, "Bogner Uberschall", "2dor")};
           }
           reply(Result<TonePage>::ok(page));
         }
@@ -4250,13 +4252,60 @@ struct ToneArtTests : juce::UnitTest {
       byFiles.lookup({pack}, "2dor", [&](std::optional<ToneArt::Art> a) { found = a; ++done; });
       for (int i = 0; i < 80 && done == 0; ++i) juce::MessageManager::getInstance()->runDispatchLoopUntil(100);
       expect(found && found->toneId == 41, "the tone whose models are the files");
-      expectEquals(creatorSession.creators.joinIntoString(" / "), juce::String("2dor: Bogner Uberschall"));
-      expectEquals(creatorSession.searches, 2, "the title search, then the creator's");
-      expectEquals(creatorSession.modelLists, 2, "the first candidate checked, then the second");
+      expectEquals(creatorSession.creators.joinIntoString(" / "),
+                   "2dor: " + pack.getFileName() + " / 2dor: Bogner Uberschall");
+      expectEquals(creatorSession.searches, 3, "the title search, then the creator's two");
+      expectEquals(creatorSession.modelLists, 1, "the Uberschall checked first (more words shared)");
       done = 0;
       byFiles.lookup({pack}, "2dor", [&](std::optional<ToneArt::Art> a) { found = a; ++done; });
       expect(done == 1 && found && found->toneId == 41, "cached");
-      expectEquals(creatorSession.searches, 2, "nothing asked again");
+      expectEquals(creatorSession.searches, 3, "nothing asked again");
+      scratch.getFile().deleteRecursively();
+    }
+
+    beginTest("a common title: the creator's tones for the folder's whole name, its title matched");
+    {
+      expectEquals(ToneArt::sharedWords("Bogner Uberschall Rev Blue", "Bogner Uberschall"), 2);
+      expectEquals(ToneArt::sharedWords("1966 Fender_Deluxe Reverb", "1964 Fender Vibroverb"), 1);
+      // The title search ranks twenty other Deluxe Reverbs first; among the
+      // creator's tones for "1966 Fender Deluxe Reverb", that very title: no
+      // models to read.
+      struct TitleSession : ScriptedSession {
+        int searches = 0, modelLists = 0;
+        juce::StringArray creators;
+        bool authenticated() const override { return true; }
+        void searchTones(const ToneQuery& query, int, int, Reply<TonePage> reply) override {
+          ++searches;
+          TonePage page;
+          if (query.creators.empty())
+            page.data = {tone(50, "Fender '65 Deluxe Reverb", "gloo")};
+          else {
+            creators.add(query.creators.front() + ": " + query.text);
+            page.data = {tone(51, "1964 Fender Deluxe Reverb", "maestrodimusica"),
+                         tone(52, "1966 Fender Deluxe Reverb", "maestrodimusica")};
+          }
+          reply(Result<TonePage>::ok(page));
+        }
+        void listToneModels(int, const juce::String&, Reply<std::vector<Model>> reply) override {
+          ++modelLists;
+          reply(Result<std::vector<Model>>::ok({}));
+        }
+      } titleSession;
+      UiPrefs titlePrefs;
+      ToneArt byTitle(titleSession, titlePrefs);
+      const juce::TemporaryFile scratch;
+      const auto pack = scratch.getFile().getChildFile("1966 Fender Deluxe Reverb");
+      pack.createDirectory();
+      pack.getChildFile("66 DR - 80's Clean - V3 T6 B6.nam").replaceWithText("{}");
+      std::optional<ToneArt::Art> found;
+      int done = 0;
+      byTitle.lookup({pack}, "maestrodimusica", [&](std::optional<ToneArt::Art> a) { found = a; ++done; });
+      for (int i = 0; i < 80 && done == 0; ++i) juce::MessageManager::getInstance()->runDispatchLoopUntil(100);
+      expect(found && found->toneId == 52, "the 1966 one");
+      expectEquals(titleSession.creators.joinIntoString(" / "),
+                   juce::String("maestrodimusica: 1966 Fender Deluxe Reverb"));
+      expectEquals(titleSession.searches, 2);
+      expectEquals(titleSession.modelLists, 0, "matched by title");
       scratch.getFile().deleteRecursively();
     }
   }

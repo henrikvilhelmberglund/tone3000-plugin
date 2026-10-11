@@ -10,9 +10,10 @@ namespace {
 
 juce::String cacheKey(const juce::File& folder) { return folder.getFullPathName().toLowerCase(); }
 
-// A miss cached before the creator search (2), or while a null
-// "modeled_by" was read as the next key's name (3): asked once more.
-constexpr int kMissVersion = 3;
+// A miss cached before the creator search (2), while a null "modeled_by"
+// was read as the next key's name (3), or before the creator search tried
+// the folder's whole name (4): asked once more.
+constexpr int kMissVersion = 4;
 
 bool titleMatches(const juce::String& a, const juce::String& b) {
   if (a.isEmpty() || b.isEmpty()) return false;
@@ -78,6 +79,16 @@ juce::String ToneArt::leadingWords(const juce::String& folderName, const juce::S
   for (const auto& word : words)
     if (const auto plain = normalized(word); plain.isNotEmpty() && plain != who && kept.size() < 2) kept.add(word.trim());
   return kept.joinIntoString(" ");
+}
+
+int ToneArt::sharedWords(const juce::String& folderName, const juce::String& title) {
+  juce::StringArray words;
+  words.addTokens(folderName.replaceCharacter('_', ' '), " ", "");
+  const auto plainTitle = normalized(title);
+  int shared = 0;
+  for (const auto& word : words)
+    if (const auto plain = normalized(word); plain.isNotEmpty() && plainTitle.contains(plain)) ++shared;
+  return shared;
 }
 
 bool ToneArt::modelsMatch(const juce::StringArray& captures, const std::vector<Model>& models) {
@@ -234,48 +245,72 @@ void ToneArt::lookupFrom(juce::Array<juce::File> folders, int index, juce::Strin
 }
 
 void ToneArt::byCreator(juce::Array<juce::File> folders, int index, juce::String creator,
-                        std::function<void(std::optional<Art>)> done) {
+                        std::function<void(std::optional<Art>)> done, int stage) {
   const juce::File target = folders[index];
   auto captures = captureNames(target);
-  const auto text = leadingWords(target.getFileName(), creator);
+  // The folder's whole name, then its first words (a renamed folder).
+  const auto whole = target.getFileName().replaceCharacter('_', ' ').trim();
+  const auto first = leadingWords(target.getFileName(), creator);
+  if (stage == 1 && first == whole) return answer(folders, index, creator, std::nullopt, done);  // searched already
+  const auto text = stage == 0 ? whole : first;
   if (captures.isEmpty() || text.isEmpty()) return answer(folders, index, creator, std::nullopt, done);
-  enqueue([this, folders, index, creator, done, captures, text] {
+  enqueue([this, folders, index, creator, done, captures, text, stage] {
     ToneQuery query;
     query.text = text;
     query.creators = {creator};
     inFlight_ = true;
     lastRequestMs_ = juce::Time::currentTimeMillis();
-    session_.searchTones(query, 1, 20, scope_.wrap([this, folders, index, creator, done, captures](Result<TonePage> page) {
+    session_.searchTones(query, 1, 20, scope_.wrap([this, folders, index, creator, done, captures, text, stage](
+                                                       Result<TonePage> page) {
       inFlight_ = false;
       if (!page) return done(std::nullopt);  // not an answer: asked again another time
-      // That creator's tones with a picture, at most three checked.
+      const juce::File target = folders[index];
+      // That creator's tones with a picture.
       const auto who = normalized(creator);
-      std::vector<Tone> candidates;
+      std::vector<Tone> mine;
       for (const auto& tone : page->data)
         if (!tone.images.empty() && tone.user &&
-            (normalized(tone.user->username) == who || normalized(tone.user->displayName) == who) &&
-            candidates.size() < 3)
-          candidates.push_back(tone);
-      checkCandidates(folders, index, creator, std::move(candidates), 0, captures, done);
+            (normalized(tone.user->username) == who || normalized(tone.user->displayName) == who))
+          mine.push_back(tone);
+      // Its title is the folder's: that one (no models to read).
+      const auto titled = pick(mine, target.getFileName(), creator);
+      juce::String seen;
+      for (size_t i = 0; i < mine.size() && i < 5; ++i) seen << (i > 0 ? "; " : "") << mine[i].title;
+      juce::Logger::writeToLog("[ToneArt]   " + creator + "'s tones for \"" + text + "\": " +
+                               juce::String(static_cast<int>(mine.size())) + (seen.isEmpty() ? "" : ": " + seen) +
+                               (titled ? " -> matched by title" : ""));
+      if (titled) return answer(folders, index, creator, titled, done);
+      // Else the ones most like the folder's name, at most three, by their models.
+      std::stable_sort(mine.begin(), mine.end(), [&target](const Tone& a, const Tone& b) {
+        return sharedWords(target.getFileName(), a.title) > sharedWords(target.getFileName(), b.title);
+      });
+      if (mine.size() > 3) mine.resize(3);
+      checkCandidates(folders, index, creator, std::move(mine), 0, captures, done, stage);
     }));
   });
 }
 
 void ToneArt::checkCandidates(juce::Array<juce::File> folders, int index, juce::String creator,
                               std::vector<Tone> candidates, size_t next, juce::StringArray captures,
-                              std::function<void(std::optional<Art>)> done) {
-  if (next >= candidates.size()) return answer(folders, index, creator, std::nullopt, done);
-  enqueue([this, folders, index, creator, candidates, next, captures, done] {
+                              std::function<void(std::optional<Art>)> done, int stage) {
+  if (next >= candidates.size()) {
+    if (stage == 0) return byCreator(folders, index, creator, done, 1);
+    return answer(folders, index, creator, std::nullopt, done);
+  }
+  enqueue([this, folders, index, creator, candidates, next, captures, done, stage] {
     const auto& tone = candidates[next];
     inFlight_ = true;
     lastRequestMs_ = juce::Time::currentTimeMillis();
     session_.listToneModels(tone.id, tone.format,
-                            scope_.wrap([this, folders, index, creator, candidates, next, captures, done](
+                            scope_.wrap([this, folders, index, creator, candidates, next, captures, done, stage](
                                             Result<std::vector<Model>> models) {
       inFlight_ = false;
       if (!models) return done(std::nullopt);  // not an answer
-      if (modelsMatch(captures, *models)) return answer(folders, index, creator, artOf(candidates[next]), done);
-      checkCandidates(folders, index, creator, candidates, next + 1, captures, done);
+      if (modelsMatch(captures, *models)) {
+        juce::Logger::writeToLog("[ToneArt]   " + candidates[next].title + ": its models are the folder's -> matched");
+        return answer(folders, index, creator, artOf(candidates[next]), done);
+      }
+      checkCandidates(folders, index, creator, candidates, next + 1, captures, done, stage);
     }));
   });
 }

@@ -13,11 +13,15 @@
 //  - a capture's folder first, then up to two folders above it (a generic
 //    "DI" or "favorites" inside the tone's folder), each cached on its own.
 //
-// A folder renamed by its owner ("Bogner Uberschall Rev Blue (E34L) - Amp
-// Head" for the tone "Bogner Uberschall") misses the title search. When its
-// files name a creator, that creator's tones are searched for the folder
-// name's first words, and a tone whose models are the folder's files (by
-// name) is the one: a few requests more, once per folder.
+// A folder named after a tone the search ranks low (a prolific creator,
+// a common title: "1966 Fender Deluxe Reverb" among twenty others), or one
+// renamed by its owner ("Bogner Uberschall Rev Blue (E34L) - Amp Head" for
+// the tone "Bogner Uberschall"), misses the title search. When its files
+// name a creator, that creator's tones are searched for the folder's name
+// (its title there matches as above), then for the name's first words; of
+// what comes back, the tones sharing the most words with the folder are
+// checked first, and one whose models are the folder's files (by name) is
+// the one: a few requests more, once per folder.
 #pragma once
 
 #include <juce_events/juce_events.h>
@@ -74,6 +78,9 @@ public:
   // The creator search's text: the folder name's first two words, the
   // creator's name left out ("2DOR Fortin Evil Pumpkin" by 2dor: "Fortin Evil").
   static juce::String leadingWords(const juce::String& folderName, const juce::String& creator);
+  // How many of the folder name's words a tone title holds (letters and
+  // digits, case aside): the creator's tones most like the folder first.
+  static int sharedWords(const juce::String& folderName, const juce::String& title);
   // The tone whose models are the folder's captures: at least half of
   // `captures` (normalized names) among `models`' names, or five of them.
   static bool modelsMatch(const juce::StringArray& captures, const std::vector<Model>& models);
@@ -85,13 +92,14 @@ private:
   void lookupFrom(juce::Array<juce::File> folders, int index, juce::String creator,
                   std::function<void(std::optional<Art>)> done);
   // The title search missed `folders[index]`: its creator's tones, by its
-  // files (above).
+  // files (above). `stage` 0 searches the folder's name, 1 its first words.
   void byCreator(juce::Array<juce::File> folders, int index, juce::String creator,
-                 std::function<void(std::optional<Art>)> done);
+                 std::function<void(std::optional<Art>)> done, int stage = 0);
   // Checks `candidates` (from `next` on) by their models; the first match
-  // answers, none: the folder is a miss.
+  // answers; none: the next stage, after the last the folder is a miss.
   void checkCandidates(juce::Array<juce::File> folders, int index, juce::String creator, std::vector<Tone> candidates,
-                       size_t next, juce::StringArray captures, std::function<void(std::optional<Art>)> done);
+                       size_t next, juce::StringArray captures, std::function<void(std::optional<Art>)> done,
+                       int stage);
   // Done with `folders[index]` (cached): its art, or on to the next folder.
   void answer(const juce::Array<juce::File>& folders, int index, const juce::String& creator,
               const std::optional<Art>& art, const std::function<void(std::optional<Art>)>& done);
