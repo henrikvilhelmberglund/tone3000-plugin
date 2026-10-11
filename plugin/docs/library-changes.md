@@ -12,8 +12,8 @@ main design decisions, lists the known gaps, and collects ideas for later.
 
 ## Size and shape
 
-The branch is twenty commits on top of upstream v0.0.12 (`ab5e5ae`): the
-ten it was opened with, and ten follow-ups (11 to 20). It touches 98 files
+The branch is twenty-one commits on top of upstream v0.0.12 (`ab5e5ae`): the
+ten it was opened with, and eleven follow-ups (11 to 21). It touches 98 files
 with about 23,000 added lines. About 6,200 of those are screenshot
 fixtures (`scenarios.json`), about 4,100 are tests and test support, and
 about 1,300 are docs, which leaves about 11,000 lines of product code.
@@ -413,6 +413,22 @@ and the old reading took the next quoted text after the colon, the next
 key's name (`"gear_type"`). The lookup then required a creator called
 "gear_type", so a folder whose title matched a tone exactly was cached as
 a miss, and Export for Sharing treated it as named by that "creator".
+
+### 21. The creator search tries the folder's whole name
+
+**What:** `ToneArt::byCreator` searches the creator's tones in two stages:
+the folder's whole name first, then (if that finds nothing) its first two
+words as before. A result whose title matches the folder (`pick`) is the
+answer with no model lists read. Otherwise the results are ranked by how
+many of the folder name's words their titles hold (`sharedWords`), and the
+top three are checked by their models. Both stages log what they found.
+Cached misses are asked once more (`kMissVersion` 4).
+
+**Why:** for a creator with many similar tones, two words are not enough.
+"1966 Fender Deluxe Reverb" by maestrodimusica lost the title search to
+twenty other Deluxe Reverbs, and the creator search for "1966 Fender"
+checked three of their other 1964/1966 Fenders and gave up, though the
+tone's title is the folder's exactly.
 
 ## Things to look at closely
 

@@ -406,12 +406,15 @@ so reopening the editor or the project shows it where you left it.
   and punctuation aside; with no creator in the files, only an exact title)
   puts its photo, creator and page link on the block
   (`setLocalToneArt`, saved with presets and sessions like any tone field).
-  A folder renamed by its owner ("Bogner Uberschall Rev Blue (E34L) - Amp
-  Head" for 2dor's "Bogner Uberschall") misses that search; when its files
-  name a creator, that creator's tones are searched for the folder name's
-  first two words (the creator's own name left out), and the first of at
-  most three whose models are the folder's files by name (half of them, or
-  five) is the match.
+  A folder whose tone the search ranks low (a prolific creator, a common
+  title: "1966 Fender Deluxe Reverb" behind twenty others), or one renamed by
+  its owner ("Bogner Uberschall Rev Blue (E34L) - Amp Head" for 2dor's
+  "Bogner Uberschall"), misses that search. When its files name a creator,
+  that creator's tones are searched for the folder's whole name, then for
+  its first two words (the creator's own name left out). A tone titled like
+  the folder is the match; otherwise, of the three sharing the most words
+  with the folder name, the first whose models are the folder's files by
+  name (half of them, or five).
   Responsibly: only while signed in, only for a local block playing a file
   from disk (a Library load, a drop, a restored project), one request at a
   time a second apart, and once per folder ever. Every answer,
