@@ -12,8 +12,8 @@ main design decisions, lists the known gaps, and collects ideas for later.
 
 ## Size and shape
 
-The branch is twenty-one commits on top of upstream v0.0.12 (`ab5e5ae`): the
-ten it was opened with, and eleven follow-ups (11 to 21). It touches 98 files
+The branch is twenty-two commits on top of upstream v0.0.12 (`ab5e5ae`): the
+ten it was opened with, and twelve follow-ups (11 to 22). It touches 98 files
 with about 23,000 added lines. About 6,200 of those are screenshot
 fixtures (`scenarios.json`), about 4,100 are tests and test support, and
 about 1,300 are docs, which leaves about 11,000 lines of product code.
@@ -43,11 +43,13 @@ own. They go from small and independent to large:
 | 18 | Scroll the drawer while dragging near its edges | feature | 3 |
 | 19 | Folders in your order: drop between folders | feature | 12 |
 | 20 | Artwork: a null `modeled_by` names no creator | bug fix | 4 |
+| 21 | Artwork: the creator search tries the folder's whole name | bug fix | 5 |
+| 22 | REFRESH: a byte-identical copy isn't new | bug fix | 5 |
 
 Commits 1 to 5 stand alone and could be merged separately. Commit 6 is
 useful on its own for OS file drops, and the Library's drag and drop needs
 it. Commits 7 to 9 are the Library itself, 11, 12 and 14 fix what
-renaming a library showed, and 15 to 19 came from using it (below).
+renaming a library showed, and 15 to 22 came from using it (below).
 
 ## Commit by commit
 
@@ -429,6 +431,19 @@ Cached misses are asked once more (`kMissVersion` 4).
 twenty other Deluxe Reverbs, and the creator search for "1966 Fender"
 checked three of their other 1964/1966 Fenders and gave up, though the
 tone's title is the folder's exactly.
+
+### 22. REFRESH: a byte-identical copy isn't new
+
+**What:** `newInFolder` no longer counts a file the block doesn't list
+when its bytes are those of a capture the block has (same model id). Only
+unlisted files the size of a listed one are read, once per folder date
+(`FolderFiles::ids`).
+
+**Why:** a folder load keeps one of two identical files
+(`finishLocalToneLoad`: the id comes from the bytes, so a copy would
+collide), so the other is never in the block. REFRESH counted it as new
+and stayed up for good, reloading the same captures each time. Seen on a
+favorites folder holding `X.nam` and `niceX.nam`.
 
 ## Things to look at closely
 
