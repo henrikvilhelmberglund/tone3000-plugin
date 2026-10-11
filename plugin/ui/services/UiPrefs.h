@@ -70,6 +70,10 @@ public:
   // In the Library, a number typed loads the capture it jumps to (off: it is
   // only selected, Enter loads). On by default.
   static constexpr const char* kLibraryNumberLoads = "t3k.libraryNumberLoads";
+  // Remember Browser Filters (off by default): the tone browser opens on the
+  // filter chips chosen last (kBrowserFilters), in every new editor.
+  static constexpr const char* kRememberBrowserFilters = "t3k.rememberBrowserFilters";
+  static constexpr const char* kBrowserFilters = "t3k.browserFilters";
   // Faceplate effect groups (view only; a powered effect shows regardless).
   static constexpr const char* kShowGateControl = "t3k.showGateControl";
   static constexpr const char* kShowPitchControl = "t3k.showPitchControl";
