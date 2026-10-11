@@ -1178,15 +1178,37 @@ int LibraryStore::newInFolder(const std::string& blockId) {
   }
   if (seen.names.size() > 300) return 0;  // past the folder-load cap: it loads alone anyway
   std::set<juce::String> listed;
+  std::set<juce::int64> sizes;  // of the listed files: a copy is one of them
   for (const auto& m : block->tone.models) {
     const auto path = juce::File::isAbsolutePath(m.sourcePath) ? m.sourcePath
                       : juce::URL(m.modelUrl).isLocalFile() ? juce::URL(m.modelUrl).getLocalFile().getFullPathName()
                                                             : juce::String();
-    if (path.isNotEmpty() && juce::File(path).getParentDirectory() == folder)
+    if (path.isNotEmpty() && juce::File(path).getParentDirectory() == folder) {
       listed.insert(juce::File(path).getFileName().toLowerCase());
+      sizes.insert(juce::File(path).getSize());
+    }
   }
+  // A byte-identical copy of a capture the block has isn't new: a folder
+  // load keeps one of them (finishLocalToneLoad), so it would never go.
+  // Only a file the size of a listed one is read, once per folder date.
+  std::set<int> ids;
+  for (const auto& m : block->tone.models) ids.insert(m.id);
   int fresh = 0;
-  for (const auto& name : seen.names) fresh += listed.count(name) == 0 ? 1 : 0;
+  for (const auto& name : seen.names) {
+    if (listed.count(name) > 0) continue;
+    if (sizes.count(folder.getChildFile(name).getSize()) == 0) {
+      ++fresh;
+      continue;
+    }
+    auto known = seen.ids.find(name);
+    if (known == seen.ids.end()) {
+      juce::MemoryBlock bytes;
+      const auto unlisted = folder.getChildFile(name);
+      const int id = unlisted.loadFileAsData(bytes) ? library_state::localModelId(bytes.getData(), bytes.getSize()) : 0;
+      known = seen.ids.emplace(name, id).first;
+    }
+    fresh += ids.count(known->second) == 0 ? 1 : 0;
+  }
   return fresh;
 }
 

@@ -326,7 +326,9 @@ so reopening the editor or the project shows it where you left it.
   with a bit more gain); on an original, **KEPT** goes to the copy, or with
   copies in several folders asks which. Above those, **REFRESH** shows when
   the block's folder holds captures of its kind the block doesn't list
-  (kept, dropped or copied in since the block loaded it): it reads the
+  (kept, dropped or copied in since the block loaded it; a byte-identical
+  copy of a capture it lists doesn't count, as a block holds only one of
+  them): it reads the
   folder into the block again, staying on the capture it plays. A block's
   captures are otherwise fixed when it loads its folder, so a session
   always reopens as it was saved. Without a recorded link (a copy

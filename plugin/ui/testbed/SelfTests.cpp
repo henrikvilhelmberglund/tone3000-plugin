@@ -1598,6 +1598,36 @@ struct LibraryFeatureTests : juce::UnitTest {
         expectEquals(backend.lastLocalLoadFile().getFullPathName(), plexi.getFullPathName(), "the folder read again, on Plexi");
         expectEquals(juce::String(backend.lastLocalLoadTarget()), juce::String(blockId), "into this block");
       }
+      // Two files with the same bytes: the block lists one, and the other
+      // (which a folder load leaves out) isn't new.
+      const auto twin = amps.getChildFile("Twin.nam"), twinCopy = amps.getChildFile("nice Twin.nam");
+      twin.replaceWithText(R"({"twin": 1})");
+      twinCopy.replaceWithText(R"({"twin": 1})");
+      pump(50);
+      const int before = library.newInFolder(blockId);
+      juce::MemoryBlock twinBytes;
+      twin.loadFileAsData(twinBytes);
+      auto withTwin = juce::JSON::parse(juce::JSON::toString(chain));
+      withTwin.getDynamicObject()->setProperty("revision", 900);
+      const auto lane = withTwin["chain"];
+      if (auto* items = lane.getArray())
+        for (auto& item : *items)
+          if (item["blockId"].toString().toStdString() == blockId) {
+            juce::DynamicObject::Ptr model = new juce::DynamicObject();
+            model->setProperty("id", library_state::localModelId(twinBytes.getData(), twinBytes.getSize()));
+            model->setProperty("name", "Twin");
+            model->setProperty("model_url", juce::URL(twin).toString(false));
+            model->setProperty("source_path", twin.getFullPathName());
+            const auto models = item["tone"]["models"];
+            if (auto* list = models.getArray()) list->add(juce::var(model.get()));
+          }
+      backend.setChain(withTwin);
+      pump(200);
+      expectEquals(library.newInFolder(blockId), before - 2, "Twin listed, its copy not new");
+      twin.deleteFile();
+      twinCopy.deleteFile();
+      backend.setChain(chain);
+      pump(200);
     }
 
     beginTest("SOURCE of a copy kept from a TONE3000 tone prefers your own download of that tone");

@@ -563,6 +563,7 @@ private:
     juce::int64 stamp = -1;  // the folder's date when listed
     juce::String extension;
     juce::StringArray names;  // lower-cased file names of that kind
+    std::map<juce::String, int> ids;  // model ids of unlisted files a listed one's size, read once
   };
   std::map<juce::String, FolderFiles> folderFiles_;
   // The original of a stash copy the block plays without knowing its file.
