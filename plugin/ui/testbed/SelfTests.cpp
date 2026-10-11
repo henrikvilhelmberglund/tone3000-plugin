@@ -4131,6 +4131,12 @@ struct ToneArtTests : juce::UnitTest {
     expect(bogner && bogner->toneId == 2);
     expect(!ToneArt::pick(results, "Bogner Ecstasy _83K Mod_ [FULL] (LiveSPICE2NAM)", "nobody"));
 
+    beginTest("a capture's creator is its modeled_by string; a null one names nobody");
+    expectEquals(ToneArt::creatorIn(R"({"metadata": {"modeled_by": "2dor", "gear_type": "amp"}})"), juce::String("2dor"));
+    expectEquals(ToneArt::creatorIn(R"({"metadata": {"modeled_by":"2dor"}})"), juce::String("2dor"));
+    expectEquals(ToneArt::creatorIn(R"({"metadata": {"modeled_by": null, "gear_type": null}})"), juce::String());
+    expectEquals(ToneArt::creatorIn(R"({"metadata": {"gear_type": "amp"}})"), juce::String());
+
     beginTest("a creator spelled like a display name still matches the username");
     expect(ToneArt::pick({tone(7, "Mesa Mark V", "slamminmofo")}, "Mesa Mark V", "SLAMMIN MOFO").has_value());
 
