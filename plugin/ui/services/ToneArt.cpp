@@ -10,8 +10,9 @@ namespace {
 
 juce::String cacheKey(const juce::File& folder) { return folder.getFullPathName().toLowerCase(); }
 
-// A miss cached before the creator search was: asked once more.
-constexpr int kMissVersion = 2;
+// A miss cached before the creator search (2), or while a null
+// "modeled_by" was read as the next key's name (3): asked once more.
+constexpr int kMissVersion = 3;
 
 bool titleMatches(const juce::String& a, const juce::String& b) {
   if (a.isEmpty() || b.isEmpty()) return false;
@@ -52,12 +53,21 @@ juce::String ToneArt::creatorOf(const juce::File& folder) {
   });
   // The metadata can sit anywhere in the JSON (often after the weights), so
   // the whole file is searched; a capture is a few hundred KB.
-  const juce::String text = nams.getReference(0).loadFileAsString();
+  return creatorIn(nams.getReference(0).loadFileAsString());
+}
+
+juce::String ToneArt::creatorIn(const juce::String& text) {
   const int key = text.indexOf("\"modeled_by\"");
   if (key < 0) return {};
-  const int open = text.indexOfChar(text.indexOfChar(key + 12, ':'), '"');
-  const int close = open < 0 ? -1 : text.indexOfChar(open + 1, '"');
-  return open < 0 || close < 0 ? juce::String() : text.substring(open + 1, close).trim();
+  const int colon = text.indexOfChar(key + 12, ':');
+  if (colon < 0) return {};
+  // A string only: `null` (a trainer that left it empty) names nobody, and
+  // the next quote would be the next key's ("gear_type").
+  int open = colon + 1;
+  while (open < text.length() && juce::CharacterFunctions::isWhitespace(text[open])) ++open;
+  if (open >= text.length() || text[open] != '"') return {};
+  const int close = text.indexOfChar(open + 1, '"');
+  return close < 0 ? juce::String() : text.substring(open + 1, close).trim();
 }
 
 juce::String ToneArt::leadingWords(const juce::String& folderName, const juce::String& creator) {
@@ -205,6 +215,18 @@ void ToneArt::lookupFrom(juce::Array<juce::File> folders, int index, juce::Strin
       inFlight_ = false;
       if (!page) return done(std::nullopt);  // a network error is not an answer: ask again another time
       const auto art = pick(page->data, target.getFileName(), creator);
+      // What it found, in the plugin log: a folder that should have matched
+      // and didn't says why there (a title, a creator, no image).
+      juce::String seen;
+      for (size_t i = 0; i < page->data.size() && i < 5; ++i) {
+        const auto& tone = page->data[i];
+        seen << (i > 0 ? "; " : "") << tone.title << " by " << (tone.user ? tone.user->username : juce::String("?"))
+             << (tone.images.empty() ? " (no image)" : "");
+      }
+      juce::Logger::writeToLog("[ToneArt] " + target.getFileName() + " (creator: " +
+                               (creator.isEmpty() ? juce::String("none named") : creator) + "): " +
+                               juce::String(static_cast<int>(page->data.size())) + " result(s)" +
+                               (seen.isEmpty() ? juce::String() : ": " + seen) + (art ? " -> matched" : " -> no match"));
       if (art || creator.isEmpty()) return answer(folders, index, creator, art, done);
       byCreator(folders, index, creator, done);
     }));

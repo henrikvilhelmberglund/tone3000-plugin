@@ -59,6 +59,8 @@ public:
   // known miss): no creator needed, nothing to ask.
   bool cachedAnswer(const juce::Array<juce::File>& folders) const;
 
+  // The modeled_by of a .nam's text: its string, or "" (none, or null).
+  static juce::String creatorIn(const juce::String& namText);
   // The modeled_by of the first .nam in `folder` (natural order), or "".
   static juce::String creatorOf(const juce::File& folder);
 

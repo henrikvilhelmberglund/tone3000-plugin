@@ -12,8 +12,8 @@ main design decisions, lists the known gaps, and collects ideas for later.
 
 ## Size and shape
 
-The branch is nineteen commits on top of upstream v0.0.12 (`ab5e5ae`): the
-ten it was opened with, and nine follow-ups (11 to 19). It touches 98 files
+The branch is twenty commits on top of upstream v0.0.12 (`ab5e5ae`): the
+ten it was opened with, and ten follow-ups (11 to 20). It touches 98 files
 with about 23,000 added lines. About 6,200 of those are screenshot
 fixtures (`scenarios.json`), about 4,100 are tests and test support, and
 about 1,300 are docs, which leaves about 11,000 lines of product code.
@@ -42,6 +42,7 @@ own. They go from small and independent to large:
 | 17 | SOURCE prefers your own copy of a TONE3000 tone | feature | 5 |
 | 18 | Scroll the drawer while dragging near its edges | feature | 3 |
 | 19 | Folders in your order: drop between folders | feature | 12 |
+| 20 | Artwork: a null `modeled_by` names no creator | bug fix | 4 |
 
 Commits 1 to 5 stand alone and could be merged separately. Commit 6 is
 useful on its own for OS file drops, and the Library's drag and drop needs
@@ -399,6 +400,19 @@ folder's bottom edge.
 
 **Why:** names were the only way to order folders, so people renamed them
 ("1. Pedal boost"), which also renames every path that points into them.
+
+### 20. A null `modeled_by` names no creator
+
+**What:** `ToneArt::creatorIn` reads `modeled_by` only when its value is a
+string. Cached misses are asked once more (`kMissVersion` 3). Each lookup
+now logs what the search returned (`[ToneArt]`: the first results' titles,
+creators and whether they have an image, and whether one matched).
+
+**Why:** trainers that leave the field empty write `"modeled_by": null`,
+and the old reading took the next quoted text after the colon, the next
+key's name (`"gear_type"`). The lookup then required a creator called
+"gear_type", so a folder whose title matched a tone exactly was cached as
+a miss, and Export for Sharing treated it as named by that "creator".
 
 ## Things to look at closely
 
