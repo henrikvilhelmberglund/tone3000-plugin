@@ -1513,6 +1513,44 @@ struct LibraryFeatureTests : juce::UnitTest {
     drive::fill(pluginRoot, "Search library", "");
     pump(250);
 
+    beginTest("Load as Block: a folder's own captures, on its first; a pack's top whole");
+    {
+      // A pack: DI holds two captures and a subfolder of more; its top none.
+      const auto pack = amps.getParentDirectory().getChildFile("Pack");
+      const auto di = pack.getChildFile("AMP").getChildFile("DI");
+      di.getChildFile("Noon settings").createDirectory();
+      for (const auto* n : {"Barebones - DI.nam", "Brown Eye - DI.nam", "Noon settings/Noon - DI.nam"})
+        di.getChildFile(n).replaceWithText("{}");
+      const auto before = juce::JSON::parse(juce::JSON::toString(juce::var(tree)));
+      auto withPack = juce::JSON::parse(juce::JSON::toString(before));
+      const auto noon = di.getChildFile("Noon settings");
+      const auto diNode =
+          node("folder", di, {node("capture", di.getChildFile("Barebones - DI.nam")),
+                              node("capture", di.getChildFile("Brown Eye - DI.nam")),
+                              node("folder", noon, {node("capture", noon.getChildFile("Noon - DI.nam"))})});
+      const auto libraries = withPack["libraries"];
+      const auto mine = libraries[0];
+      const auto kids = mine["children"];
+      if (auto* list = kids.getArray())
+        list->add(node("folder", pack, {node("folder", pack.getChildFile("AMP"), {diNode})}));
+      backend.setLibrary(withPack);
+      library.refresh(/*fresh=*/true);
+      pump(300);
+      const auto* node = library.tree().find(di.getFullPathName());
+      expect(node != nullptr && node->loadsAsBlock(), "DI in the Library");
+      if (node != nullptr) library.use(*node);
+      pump(200);
+      expectEquals(backend.lastLocalLoadFile().getFullPathName(),
+                   di.getChildFile("Barebones - DI.nam").getFullPathName(), "its first capture, with its folder");
+      if (const auto* top = library.tree().find(pack.getFullPathName())) library.use(*top);
+      pump(200);
+      expectEquals(backend.lastLocalLoadFile().getFullPathName(), pack.getFullPathName(), "the top: whole");
+      pack.deleteRecursively();
+      backend.setLibrary(before);
+      library.refresh(/*fresh=*/true);
+      pump(300);
+    }
+
     beginTest("a block whose file moved away is found by its name and bytes, and re-pointed");
     {
       juce::MemoryBlock bytes;

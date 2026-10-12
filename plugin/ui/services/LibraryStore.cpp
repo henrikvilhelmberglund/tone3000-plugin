@@ -1262,8 +1262,17 @@ void LibraryStore::loadCapture(const juce::File& file, const std::string& target
   };
   // A file brings its folder: one block, the picked capture active and its
   // neighbours a step away in the model picker (read and checked off the
-  // message thread: up to 300 files). A folder loads whole.
-  if (file.isDirectory()) return landedIn(chain_.loadLocalTonePath(file, target));
+  // message thread: up to 300 files). A Library folder the same, on its
+  // first capture: its subfolders are folders of their own in the drawer
+  // (a pack's "DI" with a "Noon settings" beside its files), and a folder
+  // with none of its own (a pack's top) loads whole.
+  if (file.isDirectory()) {
+    if (const auto* node = tree_->find(file.getFullPathName()))
+      for (const auto& child : node->children)
+        if (child.kind == LibraryNode::Kind::capture)
+          return chain_.loadLocalToneInFolderAsync(child.file(), target, scope_.wrap(landedIn));
+    return landedIn(chain_.loadLocalTonePath(file, target));
+  }
   chain_.loadLocalToneInFolderAsync(file, target, scope_.wrap(landedIn));
 }
 

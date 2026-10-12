@@ -12,8 +12,8 @@ main design decisions, lists the known gaps, and collects ideas for later.
 
 ## Size and shape
 
-The branch is twenty-two commits on top of upstream v0.0.12 (`ab5e5ae`): the
-ten it was opened with, and twelve follow-ups (11 to 22). It touches 98 files
+The branch is twenty-three commits on top of upstream v0.0.12 (`ab5e5ae`): the
+ten it was opened with, and thirteen follow-ups (11 to 23). It touches 98 files
 with about 23,000 added lines. About 6,200 of those are screenshot
 fixtures (`scenarios.json`), about 4,100 are tests and test support, and
 about 1,300 are docs, which leaves about 11,000 lines of product code.
@@ -45,11 +45,12 @@ own. They go from small and independent to large:
 | 20 | Artwork: a null `modeled_by` names no creator | bug fix | 4 |
 | 21 | Artwork: the creator search tries the folder's whole name | bug fix | 5 |
 | 22 | REFRESH: a byte-identical copy isn't new | bug fix | 5 |
+| 23 | Load as Block: a folder's own captures | behaviour change | 5 |
 
 Commits 1 to 5 stand alone and could be merged separately. Commit 6 is
 useful on its own for OS file drops, and the Library's drag and drop needs
 it. Commits 7 to 9 are the Library itself, 11, 12 and 14 fix what
-renaming a library showed, and 15 to 22 came from using it (below).
+renaming a library showed, and 15 to 23 came from using it (below).
 
 ## Commit by commit
 
@@ -444,6 +445,20 @@ unlisted files the size of a listed one are read, once per folder date
 collide), so the other is never in the block. REFRESH counted it as new
 and stayed up for good, reloading the same captures each time. Seen on a
 favorites folder holding `X.nam` and `niceX.nam`.
+
+### 23. Load as Block: a folder's own captures
+
+**What:** a Library folder loaded as a block (Load as Block, or dragged
+onto a tile) takes its own captures, starting on the first, the way a
+capture loads with its folder (`loadLocalToneInFolderAsync`). A folder
+with no captures of its own (a pack's top) still loads whole, subfolders
+included, like the tiles' Load Folder.
+
+**Why:** it loaded like an OS folder drop, every capture under it. A
+pack's "DI" folder with 75 captures and a "Noon settings" subfolder of 226
+more came to 301 and failed on the 300-file cap, and even under the cap
+the block would have mixed the subfolder's captures into its own. In the
+drawer, subfolders are folders of their own, loadable on their own.
 
 ## Things to look at closely
 

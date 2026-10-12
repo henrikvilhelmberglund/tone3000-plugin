@@ -254,9 +254,13 @@ so reopening the editor or the project shows it where you left it.
   there like a browser pick (an insert slot adds, a tone tile swaps).
 - **A folder as one block.** Drag a captures folder onto a tile (or
   right-click → Load as Block): one block whose model picker switches
-  between the folder's captures, the tiles' own Load Folder (subfolders
-  included, the majority of `.nam` vs `.wav` decides, up to 300 files;
-  references in it are not files and stay out).
+  between the folder's own captures, starting on the first, as a capture
+  loads with its folder (up to 300 files; references in it are not files
+  and stay out). Its subfolders are folders of their own in the drawer (a
+  pack's "DI" with a "Noon settings" beside its files), so they stay out
+  too. A folder with no captures of its own (a pack's top) loads whole,
+  like the tiles' own Load Folder (subfolders included, the majority of
+  `.nam` vs `.wav` decides).
 - **Drag** a row onto one of your folders of its kind: yours move, anyone
   else's (and favorites) are copied in. **Drop OS files** on a folder:
   captures, presets and references are copied in, `.t3klibrary` archives
