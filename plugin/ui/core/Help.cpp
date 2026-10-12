@@ -203,7 +203,7 @@ std::map<Key, String> buildTable() {
   t[Key::libraryKeepTone] = U("Keep as Reference: save a small file that plays this tone from TONE3000.");
   t[Key::libraryDownloadTone] = U("Download All Captures: save every capture of this tone into a new folder.");
   t[Key::libraryLoadOriginal] = U("Load Source: load the TONE3000 tone this capture came from.");
-  t[Key::libraryLoadFolder] = U("Load as Block: one block with all this folder's captures; switch them in its picker.");
+  t[Key::libraryLoadFolder] = U("Load as Block: one block with this folder's captures; switch them in its picker.");
   t[Key::libraryImportFolder] = U("Import Folder: copy a folder of captures into the Library.");
   t[Key::libraryChooseRoot] = U("Set Folder: choose where the Library is stored.");
   t[Key::libraryReveal] = U("Reveal: show it in your file browser.");
