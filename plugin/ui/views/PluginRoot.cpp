@@ -297,6 +297,10 @@ bool PluginRoot::FocusPolicy::keyPressed(const juce::KeyPress& key, juce::Compon
   // it when the OS activates it) is nothing focused as far as the UI goes.
   auto* focused = juce::Component::getCurrentlyFocusedComponent();
   if (focused != nullptr && root_.isParentOf(focused)) return false;
+  if (root_.picture_ != nullptr && key == juce::KeyPress::escapeKey) {
+    root_.closePicture();
+    return true;
+  }
   // The model keys before the scroll keys: with a block card open, left /
   // right step its model (handleModelKey), and a number or "a" is the card's
   // (its model, A/B); otherwise they scroll.
@@ -395,6 +399,10 @@ bool PluginRoot::keyPressed(const juce::KeyPress& key) {
   if (handleModelKey(key)) return true;
   if (blockKey(key)) return true;
   if (key != juce::KeyPress::escapeKey) return false;
+  if (picture_ != nullptr) {
+    closePicture();
+    return true;
+  }
   auto* focused = getCurrentlyFocusedComponent();
   if (focused == nullptr || !isParentOf(focused)) return false;
   focused->giveAwayKeyboardFocus();
@@ -407,6 +415,7 @@ bool PluginRoot::keyPressed(const juce::KeyPress& key) {
 // editor when nothing has focus (the peer hands keys to the top-level
 // component, and keys travel up, never down to us).
 bool PluginRoot::handleModelKey(const juce::KeyPress& key) {
+  if (pictureKey(key)) return true;
   const int code = key.getKeyCode();
   const bool back = code == juce::KeyPress::leftKey, on = code == juce::KeyPress::rightKey;
   if (!(back || on) || key.getModifiers().isAnyModifierKeyDown()) return false;
@@ -561,9 +570,49 @@ void PluginRoot::closeSettings() {
   });
 }
 
+bool PluginRoot::pictureKey(const juce::KeyPress& key) {
+  const auto mods = key.getModifiers();
+  if (mods.isCommandDown() || mods.isCtrlDown() || mods.isAltDown()) return false;
+  const auto c = key.getTextCharacter();
+  if (c != 'i' && c != 'I') return false;
+  if (picture_ != nullptr) {
+    closePicture();
+    return true;
+  }
+  auto* card = openCard();
+  if (card == nullptr) return false;  // on the gallery: whose picture?
+  showPicture(card->blockId());
+  return true;
+}
+
+void PluginRoot::showPicture(const std::string& blockId) {
+  if (picture_ != nullptr && picture_->blockId() == blockId) return;
+  picture_ = std::make_unique<PictureView>(services_, blockId);
+  picture_->onClose = [this] { closePicture(); };
+  picture_->setBounds(getLocalBounds());
+  // Over everything but the overlay layer (a modal still comes on top).
+  addAndMakeVisible(*picture_);
+  picture_->toBehind(&overlay_);
+  services_.hints.setHover({});
+  // The keys go on to the window (Escape, the model keys): no control under
+  // the picture keeps them.
+  if (auto* focused = getCurrentlyFocusedComponent(); focused != nullptr && isParentOf(focused))
+    focused->giveAwayKeyboardFocus();
+  if (auto* card = openCard()) card->grabKeyboardFocus();
+}
+
+void PluginRoot::closePicture() {
+  if (picture_ == nullptr) return;
+  // Deferred: the close click comes from a button inside the view.
+  juce::MessageManager::callAsync([safe = juce::Component::SafePointer<PluginRoot>(this)] {
+    if (safe != nullptr) safe->picture_.reset();
+  });
+}
+
 void PluginRoot::resized() {
   overlay_.setBounds(getLocalBounds());
   if (settings_ != nullptr) settings_->setBounds(getLocalBounds());
+  if (picture_ != nullptr) picture_->setBounds(getLocalBounds());
   for (auto* modal : {static_cast<ModalLayer*>(updateNotice_.get()), static_cast<ModalLayer*>(connectionModal_.get())})
     if (modal != nullptr) modal->setBounds(getLocalBounds());
 

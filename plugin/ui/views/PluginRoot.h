@@ -39,6 +39,7 @@
 #include "Faceplate.h"
 #include "HintBar.h"
 #include "MainScreen.h"
+#include "PictureView.h"
 #include "PluginHeader.h"
 #include "SignInScreen.h"
 #include "ToastView.h"
@@ -105,6 +106,14 @@ public:
   // account menu land on System (setup first); hosted builds have one page.
   void openSettings(SettingsScreen::Tab tab = SettingsScreen::Tab::system);
   void closeSettings();
+
+  // The picture view (PictureView): a block's picture over the whole window,
+  // chrome strips included, under the overlay layer. "i" with a block's card
+  // open shows it, "i" again or Escape leaves; the model keys still reach
+  // the card under it.
+  void showPicture(const std::string& blockId);
+  void closePicture();
+  PictureView* picture() { return picture_.get(); }
   SettingsScreen* settings() { return settings_.get(); }
 
   void paint(juce::Graphics& g) override;
@@ -139,6 +148,8 @@ private:
   std::unique_ptr<Modal> openModal(Args&&... args);
   void restackModals();
   void updateChromeHeight();
+  // "i" (handleModelKey): the picture view on and off.
+  bool pictureKey(const juce::KeyPress& key);
   // Banner phase machine.
   bool viewportFits() const;
   void bannerShow();
@@ -170,6 +181,7 @@ private:
   std::unique_ptr<TunerView> tuner_;
   std::unique_ptr<LibraryDrawer> library_;
   std::unique_ptr<SettingsScreen> settings_;
+  std::unique_ptr<PictureView> picture_;
   Faceplate faceplate_;
   AppBanner banner_;
   juce::Component overlay_;

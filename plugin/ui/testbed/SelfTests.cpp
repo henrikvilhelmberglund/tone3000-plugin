@@ -4589,6 +4589,96 @@ struct BrowserFilterMemoryTests : juce::UnitTest {
   }
 };
 
+// The picture view: "i" with a block's card open shows the block's picture
+// over the whole window, the full width with its top and bottom cut off; the
+// card stays open under it for the model keys, and "i" or Escape leaves.
+struct PictureViewTests : juce::UnitTest {
+  PictureViewTests() : juce::UnitTest("Picture view", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  void runTest() override {
+    beginTest("the full width, centred: a square's top and bottom cut off, a wide one banded");
+    {
+      const juce::Rectangle<float> box(0, 0, 1024, 600);
+      const auto square = PictureView::placement(box, 1200, 1200);
+      expectEquals(square.getWidth(), 1024.0f);
+      expectEquals(square.getHeight(), 1024.0f);
+      expectEquals(square.getY(), -212.0f, "212 cut off above and below");
+      const auto wide = PictureView::placement(box, 2000, 500);
+      expectEquals(wide.getHeight(), 256.0f);
+      expectEquals(wide.getY(), 172.0f, "centred");
+      expect(PictureView::placement(box, 0, 10).isEmpty(), "no picture, nowhere");
+    }
+
+    beginTest("behind it, its edges' colour: transparent or black is black, white is white");
+    {
+      const auto framed = [](juce::Colour edge, juce::Colour middle) {
+        juce::Image image(juce::Image::ARGB, 40, 30, true);
+        juce::Graphics g(image);
+        g.fillAll(edge);
+        g.setColour(middle);
+        g.fillRect(4, 4, 32, 22);
+        return image;
+      };
+      const auto near = [](juce::Colour a, juce::Colour b) {
+        return std::abs(a.getRed() - b.getRed()) <= 2 && std::abs(a.getGreen() - b.getGreen()) <= 2 &&
+               std::abs(a.getBlue() - b.getBlue()) <= 2 && a.isOpaque();
+      };
+      expect(near(PictureView::edgeColour(framed(juce::Colours::transparentBlack, juce::Colours::red)),
+                  juce::Colours::black), "transparent: black");
+      expect(near(PictureView::edgeColour(framed(juce::Colours::white, juce::Colours::black)), juce::Colours::white),
+             "white: white, whatever the middle");
+      expect(near(PictureView::edgeColour(framed(juce::Colour(0xff336699), juce::Colours::white)),
+                  juce::Colour(0xff336699)), "a colour: that colour");
+      expect(PictureView::edgeColour({}) == juce::Colours::black, "no picture: black");
+    }
+
+    beginTest("setup");
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("main-detail");  // a block's card open
+    if (scenario == nullptr) {
+      expect(false, "main-detail scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    juce::DocumentWindow window("picture view", juce::Colours::black, 0);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    window.setContentNonOwned(&host, true);
+    window.setVisible(true);
+    pump(300);
+    auto& root = host.pluginRoot();
+
+    beginTest("i opens it on the open card's block, i again leaves, and so does Escape");
+    {
+      const auto i = juce::KeyPress('i', {}, 'i');
+      auto* card = root.openCard();
+      expect(card != nullptr, "a card open");
+      expect(root.handleModelKey(i), "i taken");
+      pump(300);
+      auto* view = root.picture();
+      expect(view != nullptr && view->isShowing(), "the picture view");
+      if (view != nullptr && card != nullptr) expect(view->blockId() == card->blockId(), "the card's block");
+      expect(root.handleModelKey(i), "i again");
+      pump(100);
+      expect(root.picture() == nullptr, "gone");
+      root.handleModelKey(i);
+      pump(300);
+      view = root.picture();
+      expect(view != nullptr, "back");
+      if (view != nullptr) {
+        expect(view->getLocalBounds() == root.getLocalBounds(), "the whole window");
+        expect(view->image().isValid(), "its picture, in");
+        expect(root.openCard() != nullptr, "the card still under it, for the model keys");
+      }
+      expect(root.keyPressed(juce::KeyPress(juce::KeyPress::escapeKey)), "Escape taken");
+      pump(100);
+      expect(root.picture() == nullptr, "and gone");
+    }
+    window.setVisible(false);
+  }
+};
+
 // Services::pointer: a desktop build follows the input, and the gallery's
 // hover-revealed chrome pins while that input is a finger.
 // Left / right step the open block card's model (PluginRoot::handleModelKey),
@@ -5514,6 +5604,7 @@ TouchScrollTests touchScrollTests;
 PopoverFollowTests popoverFollowTests;
 ModelKeyTests modelKeyTests;
 BrowserFilterMemoryTests browserFilterMemoryTests;
+PictureViewTests pictureViewTests;
 PointerTests pointerTests;
 GlowCornerTests glowCornerTests;
 PresetReorderTests presetReorderTests;

@@ -59,6 +59,11 @@ public:
   // cache is keyed by URL alone, so a URL should always be asked for at one
   // side: art URLs and avatar URLs are disjoint, which keeps that true.
   void load(const juce::String& url, int side, Request& request, std::function<void(const juce::Image&)> onDone);
+  // The whole picture, its aspect kept: scaled down so its longer side fits
+  // `maxSide` (never up), for a picture shown large (the picture view).
+  // Cached apart from the squares ("whole:" + url), at one `maxSide` too.
+  void loadWhole(const juce::String& url, int maxSide, Request& request,
+                 std::function<void(const juce::Image&)> onDone);
 
   // Testbed hooks: answer a URL locally instead of fetching (a fixture file,
   // or the suite's synthesized placeholder), and simulate the network being
@@ -71,12 +76,15 @@ private:
 
   struct Pending {
     juce::uint64 id;
-    juce::String url;
+    juce::String url;  // the result's key (start)
     std::function<void(const juce::Image&)> onDone;
   };
 
-  juce::Image produce(const juce::String& url, int side, Job& job);  // worker thread
-  void deliver(const juce::String& url, juce::Image image);           // message thread
+  // `key` names the result (the URL, or "whole:" + it), `url` is fetched.
+  void start(const juce::String& key, const juce::String& url, int side, bool whole, Request& request,
+             std::function<void(const juce::Image&)> onDone);
+  juce::Image produce(const juce::String& url, int side, bool whole, Job& job);  // worker thread
+  void deliver(const juce::String& key, juce::Image image);                       // message thread
 
   // Enough to overlap the per-request latency of a card grid (the server
   // answers in ~150-300 ms whatever the size) without a burst of 24 sockets.
