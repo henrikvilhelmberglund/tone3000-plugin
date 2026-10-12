@@ -187,6 +187,7 @@ std::map<Key, String> buildTable() {
   t[Key::loadFolderTile] =
       U("Load Folder: pick a folder of .nam or .wav files; loads as one multi-model block.");
   t[Key::blockPower] = U("Power: bypass this block.");
+  t[Key::closePicture] = U("Close: back to the plugin (or press I or Esc).");
   t[Key::retryLoad] = U("Retry: re-download this model.");
   t[Key::swapTone] = U("Swap: replace this tone, keeping its slot.");
   t[Key::removeBlock] = U("Remove: delete this block.");

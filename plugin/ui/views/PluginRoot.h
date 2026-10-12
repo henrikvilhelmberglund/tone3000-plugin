@@ -39,6 +39,7 @@
 #include "Faceplate.h"
 #include "HintBar.h"
 #include "MainScreen.h"
+#include "PictureView.h"
 #include "PluginHeader.h"
 #include "SignInScreen.h"
 #include "ToastView.h"
@@ -95,6 +96,14 @@ public:
   // account menu land on System (setup first); hosted builds have one page.
   void openSettings(SettingsScreen::Tab tab = SettingsScreen::Tab::system);
   void closeSettings();
+
+  // The picture view (PictureView): a block's picture over the whole window,
+  // chrome strips included, under the overlay layer. "i" with a block's card
+  // open shows it, "i" again or Escape leaves; the model keys still reach
+  // the card under it.
+  void showPicture(const std::string& blockId);
+  void closePicture();
+  PictureView* picture() { return picture_.get(); }
   SettingsScreen* settings() { return settings_.get(); }
 
   void paint(juce::Graphics& g) override;
@@ -104,6 +113,8 @@ public:
   // The model keys (see the definition); the editor calls it with the keys
   // that reach it unfocused.
   bool handleModelKey(const juce::KeyPress& key);
+  // The block card on screen, if one is open.
+  class BlockCard* openCard();
   bool keyPressed(const juce::KeyPress& key) override;
   std::unique_ptr<juce::ComponentTraverser> createKeyboardFocusTraverser() override;
 
@@ -123,6 +134,8 @@ private:
   std::unique_ptr<Modal> openModal(Args&&... args);
   void restackModals();
   void updateChromeHeight();
+  // "i" (handleModelKey): the picture view on and off.
+  bool pictureKey(const juce::KeyPress& key);
   // Banner phase machine.
   bool viewportFits() const;
   void bannerShow();
@@ -153,6 +166,7 @@ private:
   std::unique_ptr<SignInScreen> signIn_;
   std::unique_ptr<TunerView> tuner_;
   std::unique_ptr<SettingsScreen> settings_;
+  std::unique_ptr<PictureView> picture_;
   Faceplate faceplate_;
   AppBanner banner_;
   juce::Component overlay_;
@@ -183,7 +197,6 @@ private:
     PluginRoot& root_;
   };
   FocusPolicy focusPolicy_{*this};
-  class BlockCard* openCard();
   juce::Component::SafePointer<juce::Component> keyWindow_;
 };
 
