@@ -1008,6 +1008,19 @@ bool BlockCard::keyPressed(const juce::KeyPress& key) {
   // Left / Right step, once the card itself has the keyboard (elsewhere they
   // scroll the screen).
   if (key.isKeyCode(juce::KeyPress::leftKey) || key.isKeyCode(juce::KeyPress::rightKey)) return select_.keyPressed(key);
+  // "k" KEEP, "s" SOURCE (or KEPT), as their buttons do where they show:
+  // only with the card itself holding the keyboard, not keys the drawer
+  // passes on (its "s" is the search).
+  const auto mods = key.getModifiers();
+  if (mods.isCommandDown() || mods.isCtrlDown() || mods.isAltDown()) return false;
+  const auto press = [](ChromeTextButton& button) {
+    if (!button.isVisible() || !button.isEnabled() || !button.onClick) return false;
+    button.onClick();
+    return true;
+  };
+  const auto c = juce::CharacterFunctions::toLowerCase(key.getTextCharacter());
+  if (c == 'k') return press(keep_);
+  if (c == 's') return press(original_) || press(kept_);
   return false;
 }
 

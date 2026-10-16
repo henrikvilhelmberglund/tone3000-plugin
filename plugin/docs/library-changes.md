@@ -12,8 +12,8 @@ main design decisions, lists the known gaps, and collects ideas for later.
 
 ## Size and shape
 
-The branch is twenty-three commits on top of upstream v0.0.12 (`ab5e5ae`): the
-ten it was opened with, and thirteen follow-ups (11 to 23). It touches 98 files
+The branch is twenty-four commits on top of upstream v0.0.12 (`ab5e5ae`): the
+ten it was opened with, and fourteen follow-ups (11 to 24). It touches 98 files
 with about 23,000 added lines. About 6,200 of those are screenshot
 fixtures (`scenarios.json`), about 4,100 are tests and test support, and
 about 1,300 are docs, which leaves about 11,000 lines of product code.
@@ -46,11 +46,12 @@ own. They go from small and independent to large:
 | 21 | Artwork: the creator search tries the folder's whole name | bug fix | 5 |
 | 22 | REFRESH: a byte-identical copy isn't new | bug fix | 5 |
 | 23 | Load as Block: a folder's own captures | behaviour change | 5 |
+| 24 | "k" KEEP and "s" SOURCE / KEPT on the block card | feature | 5 |
 
 Commits 1 to 5 stand alone and could be merged separately. Commit 6 is
 useful on its own for OS file drops, and the Library's drag and drop needs
 it. Commits 7 to 9 are the Library itself, 11, 12 and 14 fix what
-renaming a library showed, and 15 to 23 came from using it (below).
+renaming a library showed, and 15 to 24 came from using it (below).
 
 ## Commit by commit
 
@@ -459,6 +460,17 @@ pack's "DI" folder with 75 captures and a "Noon settings" subfolder of 226
 more came to 301 and failed on the 300-file cap, and even under the cap
 the block would have mixed the subfolder's captures into its own. In the
 drawer, subfolders are folders of their own, loadable on their own.
+
+### 24. "k" KEEP and "s" SOURCE / KEPT on the block card
+
+**What:** with the block card holding the keyboard, "k" does what KEEP
+does and "s" what SOURCE does (KEPT on an original), only where the button
+shows (`BlockCard::keyPressed`). Not in `blockKey`, the route for keys the
+drawer passes on or that arrive with nothing focused: in the drawer "s" is
+its search. The buttons' hints name the keys.
+
+**Why:** auditioning a folder with the arrow keys and keeping the ones you
+like meant reaching for the mouse for each KEEP.
 
 ## Things to look at closely
 

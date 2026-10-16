@@ -189,9 +189,9 @@ std::map<Key, String> buildTable() {
   t[Key::libraryForgetMissing] = U("Forget: stop looking for files you deleted on purpose.");
   t[Key::libraryStopKeeping] = U("Stop: KEEP asks for a folder again. What you kept stays.");
   t[Key::libraryKeeping] = U("Keeping here: KEEP on a block card saves the model it plays into this folder.");
-  t[Key::libraryKeep] = U("Keep: save the model this block plays into your Library.");
-  t[Key::libraryOriginal] = U("Source: load the capture this one was kept from.");
-  t[Key::libraryKept] = U("Kept: load the copy you kept of this capture.");
+  t[Key::libraryKeep] = U("Keep: save the model this block plays into your Library. Key: K, on the block.");
+  t[Key::libraryOriginal] = U("Source: load the capture this one was kept from. Key: S, on the block.");
+  t[Key::libraryKept] = U("Kept: load the copy you kept of this capture. Key: S, on the block.");
   t[Key::libraryRefreshBlock] = U("Refresh: add the captures new in this block's folder.");
   t[Key::libraryGoOriginal] = U("Go to Source: show the capture this one was kept from.");
   t[Key::libraryGoKept] = U("Go to Kept: show the copy you kept of this capture.");

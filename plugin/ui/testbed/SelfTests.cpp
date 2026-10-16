@@ -3723,6 +3723,37 @@ struct KeepLinkTests : juce::UnitTest {
     pump(100);
     expectEquals(backend.lastLocalLoadFile().getFullPathName(), before.getFullPathName());
 
+    beginTest("on the card itself: s is Source (or Kept), k is Keep; the same keys from elsewhere aren't");
+    {
+      const auto key = [](juce::juce_wchar c) { return juce::KeyPress(c, {}, c); };
+      const auto onCard = [&](juce::juce_wchar c) {
+        auto* card = static_cast<juce::Component*>(pluginRoot.openCard());
+        return card != nullptr && card->keyPressed(key(c));
+      };
+      play(copy);
+      const auto loads = backend.lastLocalLoadFile();
+      expect(!pluginRoot.keyPressed(key('s')), "s passed on from elsewhere: not the card's");
+      pump(50);
+      expectEquals(backend.lastLocalLoadFile().getFullPathName(), loads.getFullPathName(), "nothing loaded");
+      expect(onCard('s'), "s on the card");
+      pump(100);
+      expectEquals(backend.lastLocalLoadFile().getFullPathName(), original.getFullPathName(), "Source loaded");
+
+      const auto fresh = pedal.getChildFile("Fresh.nam");
+      fresh.replaceWithText(R"({"fresh": 1})");
+      play(fresh);
+      library.setKeepTarget(best.getFullPathName());
+      const auto edits = backend.libraryEdits().size();
+      expect(onCard('k'), "k on the card");
+      pump(50);
+      const bool kept = backend.libraryEdits().size() > edits;
+      expect(kept && backend.libraryEdits().back().result.isAChildOf(best), "kept into Best");
+      if (kept) backend.libraryEdits().back().result.deleteFile();
+      fresh.deleteFile();
+      library.stopKeeping();
+      play(original);  // as the tests after this one expect
+    }
+
     beginTest("a copy that is gone drops out");
     copy.deleteFile();
     expectEquals(library.keptCopies(blockId).size(), 1);

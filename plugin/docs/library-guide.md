@@ -227,6 +227,11 @@ open):
 | A number | Pick that model in the block's folder or tone |
 | Left / Right | Previous / next model |
 | a | A/B |
+| k | KEEP the model it plays |
+| s | SOURCE, or KEPT on an original (whichever shows) |
+
+**k** and **s** work only while the card itself has the keyboard (click it).
+In the drawer, **s** stays its search.
 
 **Plugin Settings → Library: Number Keys Load**: turn it off to make numbers
 in the drawer only select the capture. Enter then loads it.
